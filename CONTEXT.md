@@ -73,4 +73,46 @@ The human updates this after each session, or Claude updates it at the end of ea
 
 ---
 
+## Session: 2026-03-18 — Phase 0: Repository & Tooling Setup
+
+### Completed
+- Initialized git repository, connected to https://github.com/Hardik364/Kron.git
+- Created root Cargo.toml with all 14 workspace members and full dependency table
+- Set up rustfmt.toml, clippy.toml, deny.toml, .cargo/config.toml, .gitignore
+- Created all 14 crate skeletons (5 library + 9 binary) with correct deps, workspace lints, doc comments
+- Created GitHub Actions CI pipeline (ci.yml) — 7 jobs including integration tests
+- Created QA workflow (qa.yml) — Docker images to GHCR on push to main
+- Created Release workflow (release.yml) — musl binaries + cosign signing on tag v*
+- Created .pre-commit-config.yaml (cargo-fmt, cargo-clippy, gitleaks v8.18.4)
+- Created docker-compose.dev.yml with all 5 services (health checks + named volumes)
+- Created docker-compose.qa.yml (minimal CI compose reference)
+- Created 4 dev scripts: dev-up.sh, dev-down.sh, dev-reset.sh, dev-health-check.sh
+- Created 9 service Dockerfiles (multi-stage, non-root kron user)
+- Tagged v0.0.1 — first skeleton release
+
+### Decisions Made
+- Two environments: `qa` (auto on push to main) and `production` (manual approval on tag v*)
+- .cargo/config.toml mold linker Linux-only — avoids Windows build failure on dev machine
+- Rust not installed locally on developer machine — CI (ubuntu-latest) validates compilation
+- kron-auth is a library crate, not a binary — auth logic embedded in kron-query-api
+
+### Known Issues
+- Rust toolchain not installed locally (Windows) — install via rustup.rs before Phase 1
+- GitHub Environments (qa, production) must be created manually — see .github/ENVIRONMENTS.md
+- COSIGN_PRIVATE_KEY + COSIGN_PASSWORD secrets must be added to production environment
+- Dev environment smoke test (docker-compose up + health check) pending manual verification
+
+### Open Questions
+- Exact kernel version matrix for eBPF CO-RE (carried from project start)
+- Mistral 7B GGUF quantization level (q4_k_m vs q5_k_m) for CPU Standard tier
+- WhatsApp Business API approval timeline in India
+
+### Next Session Should Start With
+1. Read CLAUDE.md, PHASES.md, this CONTEXT.md
+2. Phase: 1.1 — implement kron-types (TenantId, EventId, AlertId, KronEvent, KronAlert, etc.)
+3. Install Rust first: https://rustup.rs/ — run `cargo build --workspace` locally to verify
+4. Set up GitHub Environments per .github/ENVIRONMENTS.md
+
+---
+
 *Future sessions append here.*

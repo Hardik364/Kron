@@ -24,21 +24,21 @@ Never mark a task complete without running its acceptance criteria.
 These must be done before any feature work. No exceptions.
 
 ### Repository & Tooling
-- [ ] Initialize Rust workspace (`Cargo.toml` with all crates defined)
-- [ ] Set up `rustfmt.toml` with project formatting rules
-- [ ] Set up `clippy.toml` with all lints including `unwrap_used = deny`
-- [ ] Set up `cargo-deny` with approved license list and dependency policy
-- [ ] Set up `cargo-audit` in CI
-- [ ] Set up GitHub Actions CI pipeline (test + clippy + fmt + audit on every PR)
-- [ ] Set up pre-commit hooks (fmt, clippy, no secrets scan)
-- [ ] Create all crate skeletons with correct `Cargo.toml` dependencies
-- [ ] Verify workspace builds cleanly with zero warnings
+- [x 2026-03-18] Initialize Rust workspace (`Cargo.toml` with all crates defined)
+- [x 2026-03-18] Set up `rustfmt.toml` with project formatting rules
+- [x 2026-03-18] Set up `clippy.toml` with all lints including `unwrap_used = deny`
+- [x 2026-03-18] Set up `cargo-deny` with approved license list and dependency policy
+- [x 2026-03-18] Set up `cargo-audit` in CI
+- [x 2026-03-18] Set up GitHub Actions CI pipeline (test + clippy + fmt + audit on every PR)
+- [x 2026-03-18] Set up pre-commit hooks (fmt, clippy, no secrets scan)
+- [x 2026-03-18] Create all crate skeletons with correct `Cargo.toml` dependencies
+- [x 2026-03-18] Verify workspace builds cleanly with zero warnings (verified by CI)
 
 ### Development Environment
-- [ ] `docker-compose.dev.yml` with: ClickHouse, Redpanda, MinIO, Prometheus, Grafana
-- [ ] `scripts/dev-up.sh` — starts dev environment in one command
-- [ ] `scripts/dev-down.sh` — tears down cleanly
-- [ ] `scripts/dev-reset.sh` — wipes and recreates all state
+- [x 2026-03-18] `docker-compose.dev.yml` with: ClickHouse, Redpanda, MinIO, Prometheus, Grafana
+- [x 2026-03-18] `scripts/dev-up.sh` — starts dev environment in one command
+- [x 2026-03-18] `scripts/dev-down.sh` — tears down cleanly
+- [x 2026-03-18] `scripts/dev-reset.sh` — wipes and recreates all state
 - [ ] Verify all engineers can `./scripts/dev-up.sh` and get a working environment
 - [ ] ClickHouse reachable at `localhost:8123`
 - [ ] Redpanda reachable at `localhost:9092`
