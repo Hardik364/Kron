@@ -115,4 +115,70 @@ The human updates this after each session, or Claude updates it at the end of ea
 
 ---
 
+## Session: 2026-03-19 — Phase 1.1 Complete + Phase 1.2 Storage Layer Foundation
+
+### Completed
+- **Phase 1.1 (kron-types):** All 13 tasks marked complete and verified
+  - Compiled successfully with `cargo check -p kron-types`
+  - Code pushed in commit 25a9df9 (4,475 lines, 7 modules)
+
+- **Phase 1.2 (kron-storage) Storage Layer Scaffold:**
+  - Implemented `StorageEngine` trait (async-aware via `async_trait`)
+  - Defined `EventFilter` with builder pattern and serialization
+  - Created `QueryBuilder` for parameterized, tenant-isolated queries
+  - Implemented `AdaptiveStorage` selector (chooses DuckDB or ClickHouse from `DeploymentMode`)
+  - Created `DuckDbEngine` stub for Nano tier
+  - Created `ClickHouseEngine` stub for Standard/Enterprise tier
+  - All operations enforce `tenant_id` isolation (gate 2 of 4-gate model)
+  - Added structured logging with `tracing` spans on all methods
+  - Entire workspace compiles cleanly
+
+### Decisions Made
+- `StorageEngine` trait uses `async_trait` for dynamic dispatch (enables `AdaptiveStorage` enum pattern)
+- Tenant isolation enforced via `TenantIsolationViolation` error with caller/target context
+- `QueryBuilder` always injects `AND tenant_id = ?` on every query
+- `EventFilter` fields are optional; empty filter matches "all events for tenant"
+- `AdaptiveStorage` uses Arc-wrapped backends to support dynamic dispatch across match arms
+- `DeploymentMode` added to kron-types re-exports (public API)
+- Stubs have TODO comments with issue placeholders: `TODO(#TBD, hardik, v1.1): ...`
+
+### Code Written
+- `crates/kron-storage/src/traits.rs` — `StorageEngine` trait, `AuditLogEntry`, `LatencyStats`
+- `crates/kron-storage/src/query.rs` — `EventFilter`, `QueryBuilder`, `QueryParam`, unit tests
+- `crates/kron-storage/src/adaptive.rs` — `AdaptiveStorage` with mode-based backend selection
+- `crates/kron-storage/src/duckdb.rs` — `DuckDbEngine` with stub implementations
+- `crates/kron-storage/src/clickhouse.rs` — `ClickHouseEngine` with stub implementations
+- Modified: `crates/kron-storage/src/lib.rs` — module declarations, re-exports
+- Modified: `crates/kron-storage/Cargo.toml` — added `serde`, `chrono`, `tracing` deps
+- Modified: `crates/kron-types/src/lib.rs` — added `DeploymentMode` to re-exports
+- Modified: `PHASES.md` — marked all Phase 1.1 tasks complete, Phase 1.2 in-progress
+
+### Known Issues / Tech Debt
+- DuckDB and ClickHouse backends are stubs: no actual DB connections, queries, or migrations yet
+- QueryBuilder only has SELECT templates for events/alerts; INSERT/UPDATE stubs need full schemas
+- No connection pooling, retry logic, or circuit breaker implementation yet (TODOs exist)
+- Latency stats always return zeros (no instrumentation yet)
+- Health checks are no-ops
+- 2 warnings: unused struct fields `url`, `database` in ClickHouseEngine; `db_path` in DuckDbEngine
+  (Expected; will be used when actual DB code is added)
+
+### Open Questions
+- Should `EventFilter` support complex boolean logic (AND/OR between conditions)?
+  Currently all filters are ANDed together. Complex queries should probably go through raw_where_clause or a separate interface.
+- Connection pool size, timeout values, and retry backoff strategy — need to decide before implementing real DB code
+- Pagination: should `query_events` support limit/offset, or just limit? Current impl has only limit
+- Audit log merkle chain — need to decide on hashing algorithm and verification strategy
+
+### Next Session Should Start With
+1. Read CLAUDE.md, PHASES.md, CONTEXT.md
+2. **Phase 1.2 continued:** Implement actual database drivers
+   - Add `duckdb` crate to Cargo.toml, implement DuckDB connection + migrations
+   - Add `reqwest` + response parsing to ClickHouseEngine for HTTP API
+   - Implement `insert_events()` and `query_events()` with full schema mapping
+   - Write integration tests using testcontainers (DuckDB file, ClickHouse container)
+3. Next priority: Phase 1.3 (kron-bus) — message bus abstraction
+4. Consider: Update DECISIONS.md with ADR-017 (Storage layer design choices)
+
+---
+
 *Future sessions append here.*
