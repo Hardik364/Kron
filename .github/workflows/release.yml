@@ -1,9 +1,17 @@
-name: Release
+name: Production
+
+# Triggers:
+#   - Push to main   → builds production Docker images (requires manual approval)
+#   - Push tag v*    → additionally builds signed musl binaries + GitHub Release
+#
+# Branch strategy:
+#   feature/* → qa (QA environment, auto-deploy)
+#   qa        → main (Production environment, manual approval)
 
 on:
   push:
-    tags:
-      - "v*"
+    branches: [main]
+    tags: ["v*"]
 
 env:
   CARGO_TERM_COLOR: always
@@ -11,9 +19,71 @@ env:
   IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/kron
 
 jobs:
-  # Build statically-linked Linux binaries for x86_64 and aarch64
+  # ── Always runs on push to main ──────────────────────────────────────────────
+  # Build and push production Docker images
+  build-images:
+    name: Build Production Images (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    environment: production # requires manual approval
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - kron-collector
+          - kron-normalizer
+          - kron-stream
+          - kron-alert
+          - kron-auth
+          - kron-query-api
+          - kron-soar
+          - kron-compliance
+          - kron-ai
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}
+          tags: |
+            # On tag push: semver tags (v1.2.3 → 1.2.3, 1.2, latest)
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            # On branch push: sha tag (main-abc1234)
+            type=sha,prefix=main-,format=short
+            # Always tag latest on main
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: deploy/docker/${{ matrix.service }}.Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── Only runs on tag v* ───────────────────────────────────────────────────────
+  # Build statically-linked musl binaries for customer on-premise deployment
   build-binaries:
     name: Build ${{ matrix.binary }} (${{ matrix.target }})
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     environment: production
     strategy:
@@ -71,65 +141,10 @@ jobs:
             target/${{ matrix.target }}/release/${{ matrix.binary }}
             ${{ matrix.binary }}-${{ matrix.target }}.sig
 
-  # Build and push production Docker images tagged with semver
-  build-images:
-    name: Build Production Images (${{ matrix.service }})
-    needs: build-binaries
-    runs-on: ubuntu-latest
-    environment: production
-    permissions:
-      contents: read
-      packages: write
-    strategy:
-      fail-fast: false
-      matrix:
-        service:
-          - kron-collector
-          - kron-normalizer
-          - kron-stream
-          - kron-alert
-          - kron-auth
-          - kron-query-api
-          - kron-soar
-          - kron-compliance
-          - kron-ai
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build and push
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: deploy/docker/${{ matrix.service }}.Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
   # Create GitHub Release with all signed binaries attached
   create-release:
     name: Create GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
     needs: [build-binaries, build-images]
     runs-on: ubuntu-latest
     environment: production
