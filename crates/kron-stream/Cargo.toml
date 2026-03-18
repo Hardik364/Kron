@@ -1,0 +1,26 @@
+[package]
+name = "kron-stream"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Stream detection engine for KRON — SIGMA rules, IOC bloom filter, ONNX scoring."
+
+[[bin]]
+name = "kron-stream"
+path = "src/main.rs"
+
+[dependencies]
+kron-types = { path = "../kron-types" }
+kron-bus = { path = "../kron-bus" }
+kron-storage = { path = "../kron-storage" }
+kron-ai = { path = "../kron-ai" }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+
+[lints]
+workspace = true

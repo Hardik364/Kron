@@ -1,0 +1,34 @@
+[package]
+name = "kron-query-api"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "REST and WebSocket API server for KRON — Axum, JWT auth, tenant isolation."
+
+[[bin]]
+name = "kron-query-api"
+path = "src/main.rs"
+
+[dependencies]
+kron-types = { path = "../kron-types" }
+kron-storage = { path = "../kron-storage" }
+kron-bus = { path = "../kron-bus" }
+kron-auth = { path = "../kron-auth" }
+kron-ai = { path = "../kron-ai" }
+kron-stream = { path = "../kron-stream" }
+kron-alert = { path = "../kron-alert" }
+kron-soar = { path = "../kron-soar" }
+kron-compliance = { path = "../kron-compliance" }
+axum = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+
+[lints]
+workspace = true

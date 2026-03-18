@@ -1,0 +1,17 @@
+[package]
+name = "kron-storage"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Storage abstraction for KRON — ClickHouse and DuckDB behind a single trait."
+
+[dependencies]
+kron-types = { path = "../kron-types" }
+thiserror = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+
+[lints]
+workspace = true
