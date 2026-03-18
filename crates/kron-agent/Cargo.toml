@@ -20,9 +20,15 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
 
-[lints]
-workspace = true
-
-# eBPF interop requires unsafe — scoped to the ebpf module only (ADR-005)
+# eBPF interop requires unsafe — scoped to the ebpf module only (ADR-005).
+# Cannot inherit workspace lints and override, so we specify them explicitly here.
 [lints.rust]
 unsafe_code = "allow"
+
+[lints.clippy]
+pedantic = "warn"
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+missing_docs = "warn"
+missing_errors_doc = "warn"
