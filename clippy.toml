@@ -1,0 +1,4 @@
+# KRON clippy configuration.
+# Lint rules (unwrap_used, expect_used, panic, pedantic) are set in
+# [workspace.lints.clippy] in Cargo.toml — not duplicated here.
+msrv = "1.75"

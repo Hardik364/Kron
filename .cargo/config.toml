@@ -1,0 +1,9 @@
+# mold linker is Linux-only — not applied globally to avoid breaking Windows builds.
+# Install on Ubuntu/Debian: sudo apt install mold
+
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+
+# eBPF target used when building kron-agent eBPF programs
+[target.bpfel-unknown-none]
+rustflags = ["-C", "relocation-model=pic"]

@@ -1,0 +1,29 @@
+# Build artifacts
+/target/
+
+# Environment files (never commit credentials)
+.env
+.env.dev
+*.env
+
+# ONNX and GGUF model files (large binaries, distributed separately)
+/models/*.onnx
+/models/*.gguf
+
+# TLS credentials
+*.pem
+*.key
+*.crt
+*.p12
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# NOTE: Cargo.lock is intentionally NOT listed here.
+# It must be committed — this is a binary project (see CodeStructure.md).
