@@ -1,63 +1,117 @@
-# GitHub Environments Setup
+# GitHub Environments & Branch Strategy
 
-After pushing this repository, configure the following GitHub Environments
-in **Settings → Environments** before merging any PR to `main`.
+## Branch Strategy
 
-## Environment: `qa`
+```
+feature/your-feature
+        │
+        │  PR → qa
+        ▼
+       qa  ──────────────────→  QA Environment (auto-deploy)
+        │
+        │  PR → main (after QA sign-off)
+        ▼
+      main  ─────────────────→  Production Environment (manual approval)
+        │
+        │  git tag v1.x.x
+        ▼
+     v1.x.x ────────────────→  GitHub Release + signed binaries
+```
 
-- **Trigger**: Automatic on every push to `main`
-- **Protection rules**: None (auto-deploy)
-- **Secrets**: None required (uses `GITHUB_TOKEN` for GHCR)
+### Rules
 
-**Create**: Settings → Environments → New environment → `qa`
-No additional configuration needed.
+| Branch | Purpose | Who merges here |
+|--------|---------|----------------|
+| `feature/*` | Development | Developer creates, PRs into `qa` |
+| `qa` | QA integration | Feature PRs merge here |
+| `main` | Production | Only `qa` merges here, after QA sign-off |
 
-## Environment: `production`
+**Never commit directly to `main`.** Always go through `qa` first.
 
-- **Trigger**: Manual approval required on tag push `v*`
-- **Protection rules**:
-  - Required reviewers: Add `Hardik364` (and any other approvers)
-  - Deployment branches: Protected tags matching `v*`
-- **Secrets** (add to this environment, NOT repo-level):
-  - `COSIGN_PRIVATE_KEY` — cosign private key for binary signing
-  - `COSIGN_PASSWORD` — password for the cosign key
+---
 
-**Create**: Settings → Environments → New environment → `production`
-- Check "Required reviewers", add yourself
-- Under "Deployment branches and tags", select "Protected branches" → add tag rule `v*`
-- Add the two secrets above
+## Workflow → Environment mapping
 
-## Branch Protection: `main`
+| Workflow | Trigger | Environment | Approval |
+|----------|---------|-------------|---------|
+| `ci.yml` | Push to `qa` or `main`, any PR to either | — | None (quality gate) |
+| `qa.yml` | Push to `qa` | `qa` | None (auto) |
+| `release.yml` | Push to `main` | `production` | **Manual approval required** |
+| `release.yml` | Push tag `v*` | `production` | Manual approval + builds signed binaries + GitHub Release |
 
-Settings → Branches → Add branch protection rule:
+---
 
-- Branch name pattern: `main`
+## GitHub Environments Setup (Manual — do once)
+
+### Environment: `qa`
+
+1. Go to **Settings → Environments → New environment**
+2. Name: `qa`
+3. No protection rules needed
+4. No secrets needed (uses `GITHUB_TOKEN` for GHCR)
+
+### Environment: `production`
+
+1. Go to **Settings → Environments → New environment**
+2. Name: `production`
+3. **Required reviewers**: add `Hardik364` (and any co-approvers)
+4. **Deployment branches and tags**: select "Protected branches"
+   - Add branch rule: `main`
+   - Add tag rule: `v*`
+5. **Environment secrets** (add here, NOT at repo level):
+   - `COSIGN_PRIVATE_KEY` — cosign private key (from `cosign.key` file content)
+   - `COSIGN_PASSWORD` — password set when generating the cosign key pair
+
+---
+
+## Branch Protection Rules (Manual — do once)
+
+### Protect `qa` branch
+
+Settings → Branches → Add rule:
+- Pattern: `qa`
 - ✅ Require a pull request before merging
-- ✅ Require approvals (set to 0 for solo development)
-- ✅ Require status checks to pass before merging
-  - Required checks: `check`, `fmt`, `clippy`, `test`, `audit`, `deny`
-- ✅ Require branches to be up to date before merging
-- ✅ Do not allow bypassing the above settings
+- ✅ Require status checks: `check`, `fmt`, `clippy`, `test`
+- ✅ Require branches to be up to date
 
-## Generating cosign keys
+### Protect `main` branch
+
+Settings → Branches → Add rule:
+- Pattern: `main`
+- ✅ Require a pull request before merging
+- ✅ Require approvals: 1
+- ✅ Require status checks: `check`, `fmt`, `clippy`, `test`, `audit`, `deny`
+- ✅ Require branches to be up to date
+- ✅ Do not allow bypassing
+
+---
+
+## Image tags produced
+
+| Event | Images tagged as |
+|-------|-----------------|
+| Push to `qa` | `qa-{sha}`, `qa-latest` |
+| Push to `main` | `main-{sha}`, `latest` |
+| Push tag `v1.2.3` | `1.2.3`, `1.2`, `latest` + signed binaries |
+
+---
+
+## Generating cosign keys (one-time setup)
 
 ```bash
 # Install cosign: https://docs.sigstore.dev/cosign/system_config/installation/
 cosign generate-key-pair
 
-# This creates cosign.key (private) and cosign.pub (public)
-# Add cosign.key content as COSIGN_PRIVATE_KEY secret
-# Add cosign password as COSIGN_PASSWORD secret
-# Commit cosign.pub to the repository (it is public)
+# Creates cosign.key (PRIVATE — never commit) and cosign.pub (public — commit this)
+# Add cosign.key content as COSIGN_PRIVATE_KEY in production environment secrets
+# Add the password you chose as COSIGN_PASSWORD
 ```
 
-## Image registry
+Commit `cosign.pub` to the repository — customers use it to verify downloaded binaries:
 
-Images are pushed to GitHub Container Registry (GHCR):
-- QA: `ghcr.io/hardik364/kron/{service}:qa-{sha}`
-- Production: `ghcr.io/hardik364/kron/{service}:{version}`
-
-Pull on customer hardware:
 ```bash
-docker pull ghcr.io/hardik364/kron/kron-collector:1.0.0
+cosign verify-blob \
+  --key cosign.pub \
+  --signature kron-collector-x86_64-unknown-linux-musl.sig \
+  kron-collector-x86_64-unknown-linux-musl
 ```

@@ -2,7 +2,7 @@ name: QA
 
 on:
   push:
-    branches: [main]
+    branches: [qa]
 
 env:
   CARGO_TERM_COLOR: always
