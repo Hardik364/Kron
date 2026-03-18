@@ -12,6 +12,9 @@ kron-types = { path = "../kron-types" }
 thiserror = { workspace = true }
 async-trait = { workspace = true }
 tokio = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+chrono = { workspace = true, features = ["serde"] }
+tracing = { workspace = true }
 
 [lints]
 workspace = true

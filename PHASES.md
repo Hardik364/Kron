@@ -63,19 +63,19 @@ No UI. No alerts. No AI. Just reliable data pipeline.
 
 **Priority: P0 — nothing else can start without this**
 
-- [ ] `TenantId` newtype (UUID wrapper with Display, Serialize, Deserialize)
-- [ ] `EventId` newtype (UUID wrapper)
-- [ ] `AlertId` newtype (UUID wrapper)
-- [ ] `KronEvent` struct — all 60+ fields from Database.md schema
-- [ ] `EventSource` enum — all source types
-- [ ] `EventCategory` enum
-- [ ] `Severity` enum (P1–P5 and info/low/medium/high/critical)
-- [ ] `AssetCriticality` enum
-- [ ] `KronError` enum — top-level error type using thiserror
-- [ ] `KronConfig` struct — full configuration (all services)
-- [ ] Config loading from TOML file + environment variable overrides
-- [ ] Config validation (returns detailed errors on invalid config)
-- [ ] `TenantContext` struct (holds tenant_id for request-scoped operations)
+- [x 2026-03-18] `TenantId` newtype (UUID wrapper with Display, Serialize, Deserialize)
+- [x 2026-03-18] `EventId` newtype (UUID wrapper)
+- [x 2026-03-18] `AlertId` newtype (UUID wrapper)
+- [x 2026-03-18] `KronEvent` struct — all 60+ fields from Database.md schema
+- [x 2026-03-18] `EventSource` enum — all source types
+- [x 2026-03-18] `EventCategory` enum
+- [x 2026-03-18] `Severity` enum (P1–P5 and info/low/medium/high/critical)
+- [x 2026-03-18] `AssetCriticality` enum
+- [x 2026-03-18] `KronError` enum — top-level error type using thiserror
+- [x 2026-03-18] `KronConfig` struct — full configuration (all services)
+- [x 2026-03-18] Config loading from TOML file + environment variable overrides
+- [x 2026-03-18] Config validation (returns detailed errors on invalid config)
+- [x 2026-03-18] `TenantContext` struct (holds tenant_id for request-scoped operations)
 
 **Acceptance criteria:**
 ```rust
@@ -94,9 +94,9 @@ assert_eq!(event.event_id, back.event_id);
 
 ### 1.2 Storage Layer (`kron-storage`)
 
-- [ ] `StorageEngine` trait — abstracts DuckDB and ClickHouse behind same interface
-- [ ] `StorageEngine::insert_events(tenant_id, events)` 
-- [ ] `StorageEngine::query_events(tenant_id, filter)` 
+- [~ hardik] `StorageEngine` trait — abstracts DuckDB and ClickHouse behind same interface
+- [ ] `StorageEngine::insert_events(tenant_id, events)`
+- [ ] `StorageEngine::query_events(tenant_id, filter)`
 - [ ] `StorageEngine::insert_audit_log(tenant_id, entry)`
 - [ ] DuckDB implementation of `StorageEngine`
 - [ ] ClickHouse implementation of `StorageEngine`

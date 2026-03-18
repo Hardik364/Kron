@@ -730,9 +730,12 @@ name = "kron-storage"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "chrono",
  "kron-types",
+ "serde",
  "thiserror",
  "tokio",
+ "tracing",
 ]
 
 [[package]]

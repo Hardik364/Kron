@@ -7,14 +7,37 @@
 //! # Strict rule
 //!
 //! Every query, insert, and update in this crate enforces `tenant_id`.
-//! The [`query::rewrite`] module injects `AND tenant_id = ?` on every
-//! query — this is gate 2 of the 4-gate multi-tenancy isolation model.
+//! The [`query::QueryBuilder`] module constructs parameterized queries that
+//! always inject `AND tenant_id = ?` — this is gate 2 of the 4-gate
+//! multi-tenancy isolation model.
 //!
 //! # Module structure
 //!
-//! - [`traits`] — `StorageEngine` trait definition
+//! - [`traits`] — `StorageEngine` trait definition and `AuditLogEntry`
+//! - [`query`] — `EventFilter`, `QueryBuilder` with parameterized queries
 //! - [`adaptive`] — `AdaptiveStorage` picks ClickHouse or DuckDB from config
+//! - [`duckdb`] — DuckDB implementation (Nano tier)
 //! - [`clickhouse`] — ClickHouse implementation (Standard/Enterprise)
-//! - [`duckdb`] — DuckDB implementation (Nano)
-//! - [`query`] — `EventFilter`, query builder, tenant rewriter
-//! - [`parquet`] — Parquet export/import for cold storage
+//!
+//! # Usage
+//!
+//! ```ignore
+//! use kron_storage::AdaptiveStorage;
+//! use kron_types::KronConfig;
+//!
+//! let config = KronConfig::from_file("config.toml")?;
+//! let storage = AdaptiveStorage::new(&config).await?;
+//!
+//! // All operations automatically enforce tenant isolation
+//! let events = storage.query_events(&ctx, None, 1000).await?;
+//! ```
+
+pub mod adaptive;
+pub mod clickhouse;
+pub mod duckdb;
+pub mod query;
+pub mod traits;
+
+// Re-export key types
+pub use adaptive::AdaptiveStorage;
+pub use traits::{AuditLogEntry, LatencyStats, StorageEngine, StorageResult};
