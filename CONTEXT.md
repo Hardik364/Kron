@@ -215,4 +215,64 @@ The human updates this after each session, or Claude updates it at the end of ea
 
 ---
 
-*Future sessions append here.*
+## Session: 2026-03-19 — Phase 1.3 Message Bus (kron-bus) Complete
+
+### Completed
+- **Phase 1.3 (kron-bus):** All 11 tasks marked complete
+  - `BusProducer` + `BusConsumer` traits with full doc comments and at-least-once semantics
+  - `BusMessage` + `OutboundMessage` value types
+  - `EmbeddedBusProducer` / `EmbeddedBusConsumer`: disk-backed WAL for Nano tier
+  - `Wal`: append-only binary file with xxhash3 checksums, crash recovery, compaction
+  - `EmbeddedBusState`: shared topic registry + global Notify for wakeup
+  - `RedpandaProducer` / `RedpandaConsumer`: rdkafka wrappers with DLQ routing
+  - `AdaptiveBus`: factory selecting embedded vs Redpanda from `KronConfig.mode`
+  - `topics.rs`: all topic name constants + per-tenant helpers
+  - `metrics.rs`: Prometheus metrics (sent, received, commits, nacks, DLQ, lag, latency)
+  - Added `EmbeddedBusConfig` to `kron-types/src/config.rs`
+  - Dead letter queue: messages routed after `max_retry_count` (default 3) nacks
+  - Backpressure: producer returns `BusError::Backpressure` when lag > threshold
+
+### Decisions Made
+- At-least-once delivery via explicit offset commits (not auto-commit)
+- Dead letter topic naming: `kron.deadletter.{source_topic}`
+- Embedded bus uses `tokio::task::spawn_blocking` for all WAL I/O (no blocking in async runtime)
+- WAL format: binary with xxhash3_64 checksum per record, 16-byte file header ("KRONWLOG")
+- `EmbeddedBusState` shared via `Arc` between all producers and consumers in same process
+- `TopicRegistry` uses `std::sync::Mutex` (not tokio) since it's only accessed inside spawn_blocking
+- Compaction triggered manually via `Wal::compact(min_offset)` — no automatic background task
+- Redpanda consumer creates DLQ producer on construction for independent DLQ routing
+
+### Code Written
+- `crates/kron-bus/src/lib.rs` — module declarations + top-level doc
+- `crates/kron-bus/src/error.rs` — `BusError` with 9 variants
+- `crates/kron-bus/src/traits.rs` — `BusProducer`, `BusConsumer`, `BusMessage`, `OutboundMessage`
+- `crates/kron-bus/src/topics.rs` — topic constants and helpers (with unit tests)
+- `crates/kron-bus/src/metrics.rs` — Prometheus metric recording functions
+- `crates/kron-bus/src/embedded/wal.rs` — Write-ahead log implementation (with unit tests)
+- `crates/kron-bus/src/embedded/state.rs` — `EmbeddedBusState`, `TopicRegistry`, `TopicEntry`
+- `crates/kron-bus/src/embedded/producer.rs` — `EmbeddedBusProducer`
+- `crates/kron-bus/src/embedded/consumer.rs` — `EmbeddedBusConsumer` with retry + DLQ
+- `crates/kron-bus/src/embedded/mod.rs` — re-exports
+- `crates/kron-bus/src/redpanda/producer.rs` — `RedpandaProducer` (rdkafka FutureProducer)
+- `crates/kron-bus/src/redpanda/consumer.rs` — `RedpandaConsumer` (rdkafka StreamConsumer)
+- `crates/kron-bus/src/redpanda/mod.rs` — re-exports
+- `crates/kron-bus/src/adaptive.rs` — `AdaptiveBus` factory
+- `crates/kron-types/src/config.rs` — added `EmbeddedBusConfig` + updated `KronConfig`
+- Modified: `crates/kron-bus/Cargo.toml` — added all required dependencies
+- Modified: `crates/kron-types/src/lib.rs` — added `EmbeddedBusConfig`, `RedpandaConfig` to re-exports
+
+### Known Issues / Tech Debt
+- Redpanda consumer tests require a running Redpanda broker (integration tests only)
+- WAL compaction is not triggered automatically — callers must invoke it periodically
+- `EmbeddedBusConsumer::try_read_next` iterates topics sequentially, not round-robin
+- `chrono::DateTime::from_timestamp_millis` may return None for out-of-range timestamps (handled with fallback to Utc::now)
+
+### Open Questions
+- WAL segment rotation (multiple segment files per topic) — needed when WAL > 256MB sustained
+- Redpanda TLS/SASL configuration — `KronConfig.redpanda` needs `ssl_ca_location`, `sasl_mechanism` fields for production
+
+### Next Session Should Start With
+1. Read CLAUDE.md, PHASES.md, CONTEXT.md
+2. **Phase 1.4 (kron-agent):** eBPF agent implementation
+   - Note: requires Linux kernel 5.4+ with BTF — CI will validate, not local Windows dev
+3. Run `cargo check --workspace` to verify Phase 1.3 compiles cleanly

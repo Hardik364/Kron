@@ -56,6 +56,8 @@ pub struct KronConfig {
     pub duckdb: DuckDbConfig,
     /// Redpanda/Kafka bus configuration (Standard/Enterprise).
     pub redpanda: RedpandaConfig,
+    /// Embedded disk-backed bus configuration (Nano tier).
+    pub embedded_bus: EmbeddedBusConfig,
     /// MinIO object storage configuration.
     pub minio: MinioConfig,
     /// Authentication and JWT configuration.
@@ -81,6 +83,7 @@ impl Default for KronConfig {
             clickhouse: ClickHouseConfig::default(),
             duckdb: DuckDbConfig::default(),
             redpanda: RedpandaConfig::default(),
+            embedded_bus: EmbeddedBusConfig::default(),
             minio: MinioConfig::default(),
             auth: AuthConfig::default(),
             agent: AgentConfig::default(),
@@ -169,6 +172,34 @@ impl Default for DuckDbConfig {
             memory_limit_mb: 2048,
             threads: 4,
             migrations_dir: PathBuf::from("/etc/kron/migrations"),
+        }
+    }
+}
+
+/// Embedded disk-backed message bus configuration (Nano tier).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmbeddedBusConfig {
+    /// Directory where WAL files are stored per topic.
+    pub data_dir: PathBuf,
+    /// Maximum WAL file size in megabytes before compaction is triggered.
+    pub max_wal_size_mb: u64,
+    /// Whether to call `fdatasync` after each write for crash durability.
+    /// Set false in tests / high-throughput dev mode.
+    pub sync_writes: bool,
+    /// Maximum retry attempts before a message is moved to the dead letter topic.
+    pub max_retry_count: u8,
+    /// Backpressure threshold: block producer if consumer lag exceeds this many messages.
+    pub backpressure_lag_threshold: u64,
+}
+
+impl Default for EmbeddedBusConfig {
+    fn default() -> Self {
+        Self {
+            data_dir: PathBuf::from("/var/lib/kron/bus"),
+            max_wal_size_mb: 512,
+            sync_writes: true,
+            max_retry_count: 3,
+            backpressure_lag_threshold: 100_000,
         }
     }
 }

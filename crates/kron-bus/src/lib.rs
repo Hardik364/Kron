@@ -1,24 +1,46 @@
 //! `kron-bus` — Message bus abstraction for the KRON SIEM platform.
 //!
-//! Abstracts Redpanda (Standard/Enterprise) and an embedded disk-backed
-//! async channel (Nano) behind [`BusProducer`] and [`BusConsumer`] traits.
+//! Abstracts Redpanda (Standard/Enterprise tiers) and an embedded disk-backed
+//! WAL channel (Nano tier) behind the [`BusProducer`] and [`BusConsumer`] traits.
 //!
-//! # Topics
+//! # Feature flags
 //!
-//! - `kron.raw.{tenant_id}` — raw events from collectors
-//! - `kron.enriched.{tenant_id}` — normalized and enriched events
-//! - `kron.alerts.{tenant_id}` — alert candidates from stream processor
-//! - `kron.audit` — immutable audit log entries
+//! | Feature | Description |
+//! |---|---|
+//! | `redpanda` | Enables the Redpanda/Kafka backend (requires cmake + libssl) |
+//!
+//! The `redpanda` feature is disabled by default to allow building on Windows
+//! developer machines. CI and production Linux builds enable it explicitly.
 //!
 //! # Delivery guarantee
 //!
 //! At-least-once delivery. Consumers commit offsets only after successful
-//! processing. Failed messages go to `kron.deadletter` after 3 retries.
+//! processing. Failed messages retry up to `max_retry_count` times, then
+//! go to a `kron.deadletter.{source_topic}` dead letter topic.
 //!
-//! # Module structure
+//! # Topics
 //!
-//! - [`traits`] — `BusProducer`, `BusConsumer` trait definitions
-//! - [`topics`] — `Topic` enum and topic name constants
-//! - [`adaptive`] — `AdaptiveBus` selects implementation from config
-//! - [`embedded`] — disk-backed async channel for Nano tier
-//! - [`redpanda`] — rdkafka wrapper for Standard/Enterprise
+//! | Topic pattern | Producer | Consumer |
+//! |---|---|---|
+//! | `kron.raw.{tenant_id}` | kron-collector | kron-normalizer |
+//! | `kron.enriched.{tenant_id}` | kron-normalizer | kron-stream |
+//! | `kron.alerts.{tenant_id}` | kron-stream | kron-alert |
+//! | `kron.audit` | all services | kron-compliance |
+//! | `kron.deadletter.*` | kron-bus (internal) | kron-ctl / monitoring |
+
+pub mod adaptive;
+pub mod embedded;
+pub mod error;
+pub mod metrics;
+pub mod topics;
+pub mod traits;
+
+/// Redpanda/Kafka bus implementation (Standard/Enterprise tiers).
+///
+/// Requires the `redpanda` feature flag. Not compiled on Windows dev machines.
+#[cfg(feature = "redpanda")]
+pub mod redpanda;
+
+pub use adaptive::AdaptiveBus;
+pub use error::BusError;
+pub use traits::{BusConsumer, BusMessage, BusProducer, OutboundMessage};

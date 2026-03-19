@@ -124,18 +124,18 @@ cargo test -p kron-storage -- --include-ignored integration
 
 ### 1.3 Message Bus (`kron-bus`)
 
-- [ ] `BusProducer` trait with `send(topic, key, payload)` and `send_batch()`
-- [ ] `BusConsumer` trait with `subscribe(topic, group)` and `poll()`
-- [ ] `EmbeddedBusProducer` — disk-backed async channel (Nano tier)
-- [ ] `EmbeddedBusConsumer` — reads from embedded channel
-- [ ] `RedpandaProducer` — wraps rdkafka, Standard/Enterprise
-- [ ] `RedpandaConsumer` — wraps rdkafka, Standard/Enterprise
-- [ ] `AdaptiveBus::new(config)` — selects embedded or Redpanda
-- [ ] Topics: `kron.raw.{tenant_id}`, `kron.enriched.{tenant_id}`, `kron.alerts.{tenant_id}`, `kron.audit`
-- [ ] At-least-once delivery guaranteed (consumer commits offset only after successful processing)
-- [ ] Dead letter queue for poison messages (failed after 3 retries)
-- [ ] Backpressure: producer blocks/retries when consumer lag exceeds threshold
-- [ ] Prometheus metrics: consumer lag, throughput, error rate
+- [x 2026-03-19] `BusProducer` trait with `send(topic, key, payload)` and `send_batch()`
+- [x 2026-03-19] `BusConsumer` trait with `subscribe(topic, group)` and `poll()`
+- [x 2026-03-19] `EmbeddedBusProducer` — disk-backed async channel (Nano tier)
+- [x 2026-03-19] `EmbeddedBusConsumer` — reads from embedded channel
+- [x 2026-03-19] `RedpandaProducer` — wraps rdkafka, Standard/Enterprise
+- [x 2026-03-19] `RedpandaConsumer` — wraps rdkafka, Standard/Enterprise
+- [x 2026-03-19] `AdaptiveBus::new(config)` — selects embedded or Redpanda
+- [x 2026-03-19] Topics: `kron.raw.{tenant_id}`, `kron.enriched.{tenant_id}`, `kron.alerts.{tenant_id}`, `kron.audit`
+- [x 2026-03-19] At-least-once delivery guaranteed (consumer commits offset only after successful processing)
+- [x 2026-03-19] Dead letter queue for poison messages (failed after 3 retries)
+- [x 2026-03-19] Backpressure: producer blocks/retries when consumer lag exceeds threshold
+- [x 2026-03-19] Prometheus metrics: consumer lag, throughput, error rate
 
 **Acceptance criteria:**
 ```bash

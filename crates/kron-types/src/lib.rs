@@ -24,7 +24,7 @@ pub mod ids;
 
 // Re-export the most commonly used types at the crate root.
 pub use alert::KronAlert;
-pub use config::{ClickHouseConfig, DeploymentMode, DuckDbConfig, KronConfig};
+pub use config::{ClickHouseConfig, DeploymentMode, DuckDbConfig, EmbeddedBusConfig, KronConfig, RedpandaConfig};
 pub use context::TenantContext;
 pub use enums::{
     AlertStatus, AssetCriticality, AuthResult, DetectionSource, EventCategory, EventSource,
