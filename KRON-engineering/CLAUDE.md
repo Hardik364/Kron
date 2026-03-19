@@ -1,4 +1,4 @@
-# CLAUDE.md — KRON Master the Instructions for Claude Code
+# CLAUDE.md — KRON Master Instructions for Claude Code
 
 This file is read by Claude Code at the start of every session.
 It is the single source of truth for how to build KRON.
@@ -6,7 +6,7 @@ Never deviate from these instructions without explicit human approval.
 
 ---
 
-## What KRON Is 
+## What KRON Is
 
 KRON is a production-grade, on-premise SIEM platform for the Indian market.
 It is NOT a prototype. It is NOT a demo. Every line of code written must be

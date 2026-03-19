@@ -27,3 +27,4 @@ Thumbs.db
 
 # NOTE: Cargo.lock is intentionally NOT listed here.
 # It must be committed — this is a binary project (see CodeStructure.md).
+.claude/
