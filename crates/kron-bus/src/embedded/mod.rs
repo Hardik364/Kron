@@ -12,12 +12,10 @@
 //! use kron_bus::embedded::{EmbeddedBusProducer, EmbeddedBusConsumer};
 //! use kron_bus::embedded::state::EmbeddedBusState;
 //!
-//! # tokio_test::block_on(async {
 //! let config = EmbeddedBusConfig::default();
 //! let state = EmbeddedBusState::new(config).expect("state");
 //! let producer = EmbeddedBusProducer::new(Arc::clone(&state));
 //! let consumer = EmbeddedBusConsumer::new(Arc::clone(&state));
-//! # });
 //! ```
 
 pub mod consumer;
