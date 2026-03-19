@@ -10,8 +10,11 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
-  CC: ""
-  CFLAGS: ""
+  CC: gcc
+  CXX: g++
+  AR: ar
+  DLLTOOL: ""
+  CXXFLAGS: "-include cstdint"
 
 jobs:
   check:
