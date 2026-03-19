@@ -26,7 +26,8 @@ jobs:
             clang llvm llvm-dev libclang-dev \
             cmake pkg-config libssl-dev \
             g++ libstdc++-12-dev \
-            linux-headers-$(uname -r) || true
+            linux-headers-$(uname -r) \
+            mold || true
       - run: cargo check --workspace --all-targets
 
   fmt:
@@ -55,7 +56,8 @@ jobs:
             clang llvm llvm-dev libclang-dev \
             cmake pkg-config libssl-dev \
             g++ libstdc++-12-dev \
-            linux-headers-$(uname -r) || true
+            linux-headers-$(uname -r) \
+            mold || true
       - run: cargo clippy --workspace --all-targets -- -D warnings
 
   test:
@@ -72,7 +74,8 @@ jobs:
             clang llvm llvm-dev libclang-dev \
             cmake pkg-config libssl-dev \
             g++ libstdc++-12-dev \
-            linux-headers-$(uname -r) || true
+            linux-headers-$(uname -r) \
+            mold || true
       - run: cargo test --workspace --lib
 
   integration:
@@ -112,7 +115,8 @@ jobs:
             clang llvm llvm-dev libclang-dev \
             cmake pkg-config libssl-dev \
             g++ libstdc++-12-dev \
-            linux-headers-$(uname -r) || true
+            linux-headers-$(uname -r) \
+            mold || true
       - name: Run integration tests
         run: cargo test --workspace -- --include-ignored integration
         env:
