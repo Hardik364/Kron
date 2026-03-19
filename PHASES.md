@@ -148,21 +148,21 @@ cargo test -p kron-bus -- --include-ignored integration
 
 ### 1.4 eBPF Agent (`kron-agent`)
 
-- [ ] `AgentConfig` loaded from config file + CLI flags
-- [ ] eBPF program: `process_create` hook (`sys_enter_execve`)
-- [ ] eBPF program: `network_connect` hook (`tcp_v4_connect`)
-- [ ] eBPF program: `file_access` hook (`sys_enter_openat` for sensitive paths)
-- [ ] Ring buffer: shared memory between kernel and userspace, 64MB default
-- [ ] Userspace reader: drains ring buffer, batches events (max 1000 or 100ms)
-- [ ] Event serialization to `KronEvent` (partial — fields available from eBPF)
-- [ ] mTLS client certificate — loaded from config, used for all connections to collector
-- [ ] Heartbeat: sends heartbeat to collector every 30s
-- [ ] Local disk buffer: if collector unreachable, buffers to disk (LevelDB, max 1GB)
-- [ ] Buffer replay: drains disk buffer when collector reconnects
-- [ ] Graceful shutdown: flushes ring buffer and disk buffer before exit
-- [ ] CO-RE: uses BTF for kernel version portability
-- [ ] Kernel version check on startup: warns if <5.4, falls back to agentless recommendation
-- [ ] Agent self-monitoring: metrics on ring buffer utilization, drop rate
+- [x 2026-03-19] `AgentConfig` loaded from config file + CLI flags
+- [x 2026-03-19] eBPF program: `process_create` hook (`sys_enter_execve`)
+- [x 2026-03-19] eBPF program: `network_connect` hook (`tcp_v4_connect`)
+- [x 2026-03-19] eBPF program: `file_access` hook (`sys_enter_openat` for sensitive paths)
+- [x 2026-03-19] Ring buffer: shared memory between kernel and userspace, 64MB default
+- [x 2026-03-19] Userspace reader: drains ring buffer, batches events (max 1000 or 100ms)
+- [x 2026-03-19] Event serialization to `KronEvent` (partial — fields available from eBPF)
+- [x 2026-03-19] mTLS client certificate — loaded from config, used for all connections to collector
+- [x 2026-03-19] Heartbeat: sends heartbeat to collector every 30s
+- [x 2026-03-19] Local disk buffer: if collector unreachable, buffers to disk (WAL segments, max 1GB)
+- [x 2026-03-19] Buffer replay: drains disk buffer when collector reconnects
+- [x 2026-03-19] Graceful shutdown: flushes ring buffer and disk buffer before exit
+- [x 2026-03-19] CO-RE: uses BTF for kernel version portability (bpf/*.bpf.c compiled with clang)
+- [x 2026-03-19] Kernel version check on startup: warns if <5.4, falls back to agentless recommendation
+- [x 2026-03-19] Agent self-monitoring: metrics on ring buffer utilization, drop rate
 
 **Acceptance criteria:**
 ```bash

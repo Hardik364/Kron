@@ -192,6 +192,51 @@ impl fmt::Display for RuleId {
     }
 }
 
+/// A unique identifier for a KRON collection agent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct AgentId(Uuid);
+
+impl AgentId {
+    /// Creates a new random `AgentId`.
+    #[must_use]
+    pub fn new() -> Self {
+        Self(Uuid::new_v4())
+    }
+
+    /// Creates an `AgentId` from an existing UUID.
+    #[must_use]
+    pub fn from_uuid(uuid: Uuid) -> Self {
+        Self(uuid)
+    }
+
+    /// Returns the inner UUID.
+    #[must_use]
+    pub fn as_uuid(&self) -> &Uuid {
+        &self.0
+    }
+}
+
+impl Default for AgentId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl fmt::Display for AgentId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl FromStr for AgentId {
+    type Err = uuid::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self(Uuid::parse_str(s)?))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
