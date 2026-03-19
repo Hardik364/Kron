@@ -300,7 +300,7 @@ impl Default for AuthConfig {
         Self {
             jwt_private_key_path: PathBuf::from("/var/lib/kron/keys/jwt.key"),
             jwt_public_key_path: PathBuf::from("/var/lib/kron/keys/jwt.pub"),
-            jwt_expiry_secs: 8 * 3600,      // 8 hours
+            jwt_expiry_secs: 8 * 3600, // 8 hours
             max_failed_attempts: 5,
             lockout_duration_secs: 15 * 60, // 15 minutes
         }
@@ -590,11 +590,7 @@ impl KronConfig {
     /// is malformed, or if required fields are invalid after applying overrides.
     pub fn from_file(path: &std::path::Path) -> Result<Self, KronError> {
         let contents = std::fs::read_to_string(path).map_err(|e| {
-            KronError::Config(format!(
-                "cannot read config file {}: {}",
-                path.display(),
-                e
-            ))
+            KronError::Config(format!("cannot read config file {}: {}", path.display(), e))
         })?;
 
         let mut config: KronConfig = toml::from_str(&contents)
@@ -704,7 +700,10 @@ mod tests {
         let back: KronConfig = toml::from_str(&toml_str).expect("must deserialize");
         assert_eq!(back.clickhouse.url, config.clickhouse.url);
         assert_eq!(back.redpanda.brokers, config.redpanda.brokers);
-        assert_eq!(back.collector.max_eps_per_agent, config.collector.max_eps_per_agent);
+        assert_eq!(
+            back.collector.max_eps_per_agent,
+            config.collector.max_eps_per_agent
+        );
     }
 
     #[test]

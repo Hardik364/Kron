@@ -30,7 +30,9 @@ impl std::error::Error for EnumParseError {}
 ///
 /// Used in both events and alerts. Derives `Ord` so severity levels can be
 /// compared directly (e.g. `severity >= Severity::High`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum Severity {
     /// Informational — no action required.
@@ -101,7 +103,10 @@ impl FromStr for Severity {
             "medium" => Ok(Self::Medium),
             "high" => Ok(Self::High),
             "critical" => Ok(Self::Critical),
-            _ => Err(EnumParseError { value: s.to_string(), enum_name: "Severity" }),
+            _ => Err(EnumParseError {
+                value: s.to_string(),
+                enum_name: "Severity",
+            }),
         }
     }
 }
@@ -172,7 +177,10 @@ impl FromStr for EventSource {
             "dhcp" => Ok(Self::Dhcp),
             "dns" => Ok(Self::Dns),
             "unknown" => Ok(Self::Unknown),
-            _ => Err(EnumParseError { value: s.to_string(), enum_name: "EventSource" }),
+            _ => Err(EnumParseError {
+                value: s.to_string(),
+                enum_name: "EventSource",
+            }),
         }
     }
 }
@@ -227,7 +235,10 @@ impl FromStr for EventCategory {
             "account" => Ok(Self::Account),
             "cloud" => Ok(Self::Cloud),
             "other" => Ok(Self::Other),
-            _ => Err(EnumParseError { value: s.to_string(), enum_name: "EventCategory" }),
+            _ => Err(EnumParseError {
+                value: s.to_string(),
+                enum_name: "EventCategory",
+            }),
         }
     }
 }
@@ -289,7 +300,10 @@ impl FromStr for AssetCriticality {
             "medium" => Ok(Self::Medium),
             "low" => Ok(Self::Low),
             "unknown" => Ok(Self::Unknown),
-            _ => Err(EnumParseError { value: s.to_string(), enum_name: "AssetCriticality" }),
+            _ => Err(EnumParseError {
+                value: s.to_string(),
+                enum_name: "AssetCriticality",
+            }),
         }
     }
 }
@@ -324,7 +338,10 @@ impl FromStr for UserType {
             "human" => Ok(Self::Human),
             "service" => Ok(Self::Service),
             "system" => Ok(Self::System),
-            _ => Err(EnumParseError { value: s.to_string(), enum_name: "UserType" }),
+            _ => Err(EnumParseError {
+                value: s.to_string(),
+                enum_name: "UserType",
+            }),
         }
     }
 }
@@ -359,7 +376,10 @@ impl FromStr for AuthResult {
             "success" => Ok(Self::Success),
             "failure" => Ok(Self::Failure),
             "unknown" => Ok(Self::Unknown),
-            _ => Err(EnumParseError { value: s.to_string(), enum_name: "AuthResult" }),
+            _ => Err(EnumParseError {
+                value: s.to_string(),
+                enum_name: "AuthResult",
+            }),
         }
     }
 }
@@ -394,7 +414,10 @@ impl FromStr for NetworkDirection {
             "inbound" => Ok(Self::Inbound),
             "outbound" => Ok(Self::Outbound),
             "lateral" => Ok(Self::Lateral),
-            _ => Err(EnumParseError { value: s.to_string(), enum_name: "NetworkDirection" }),
+            _ => Err(EnumParseError {
+                value: s.to_string(),
+                enum_name: "NetworkDirection",
+            }),
         }
     }
 }
@@ -437,7 +460,10 @@ impl FromStr for FileAction {
             "create" => Ok(Self::Create),
             "delete" => Ok(Self::Delete),
             "rename" => Ok(Self::Rename),
-            _ => Err(EnumParseError { value: s.to_string(), enum_name: "FileAction" }),
+            _ => Err(EnumParseError {
+                value: s.to_string(),
+                enum_name: "FileAction",
+            }),
         }
     }
 }
@@ -550,16 +576,13 @@ mod tests {
     #[test]
     fn test_asset_criticality_multipliers_when_compared_then_ordered() {
         assert!(
-            AssetCriticality::Unknown.score_multiplier()
-                < AssetCriticality::Low.score_multiplier()
+            AssetCriticality::Unknown.score_multiplier() < AssetCriticality::Low.score_multiplier()
         );
         assert!(
-            AssetCriticality::Low.score_multiplier()
-                < AssetCriticality::Medium.score_multiplier()
+            AssetCriticality::Low.score_multiplier() < AssetCriticality::Medium.score_multiplier()
         );
         assert!(
-            AssetCriticality::Medium.score_multiplier()
-                < AssetCriticality::High.score_multiplier()
+            AssetCriticality::Medium.score_multiplier() < AssetCriticality::High.score_multiplier()
         );
         assert!(
             AssetCriticality::High.score_multiplier()

@@ -13,10 +13,10 @@ use bytes::Bytes;
 use tracing::instrument;
 use uuid::Uuid;
 
+use super::state::EmbeddedBusState;
 use crate::error::BusError;
 use crate::metrics;
 use crate::traits::{BusProducer, OutboundMessage};
-use super::state::EmbeddedBusState;
 
 /// Embedded bus producer backed by a WAL file per topic.
 ///
@@ -51,14 +51,18 @@ impl BusProducer for EmbeddedBusProducer {
         let sync = state.config.sync_writes;
 
         let offset = tokio::task::spawn_blocking(move || {
-            let mut topics = state.topics.lock().map_err(|e| {
-                BusError::Internal(format!("topics lock poisoned: {e}"))
-            })?;
+            let mut topics = state
+                .topics
+                .lock()
+                .map_err(|e| BusError::Internal(format!("topics lock poisoned: {e}")))?;
 
             let entry = topics.get_or_create(&topic_owned, &state.config.data_dir)?;
 
             // Backpressure check.
-            let lag = entry.wal.next_offset().saturating_sub(entry.min_committed_offset());
+            let lag = entry
+                .wal
+                .next_offset()
+                .saturating_sub(entry.min_committed_offset());
             if lag > state.config.backpressure_lag_threshold {
                 return Err(BusError::Backpressure {
                     topic: topic_owned.clone(),
@@ -66,13 +70,9 @@ impl BusProducer for EmbeddedBusProducer {
                 });
             }
 
-            let offset = entry.wal.append(
-                &msg_id,
-                key.as_deref(),
-                &headers,
-                &payload,
-                sync,
-            )?;
+            let offset = entry
+                .wal
+                .append(&msg_id, key.as_deref(), &headers, &payload, sync)?;
 
             Ok::<u64, BusError>(offset)
         })
@@ -104,9 +104,10 @@ impl BusProducer for EmbeddedBusProducer {
         }
 
         tokio::task::spawn_blocking(move || {
-            let mut topics = state.topics.lock().map_err(|e| {
-                BusError::Internal(format!("topics lock poisoned: {e}"))
-            })?;
+            let mut topics = state
+                .topics
+                .lock()
+                .map_err(|e| BusError::Internal(format!("topics lock poisoned: {e}")))?;
 
             for msg in &messages {
                 let msg_id = Uuid::new_v4().to_string();
@@ -150,8 +151,9 @@ impl BusProducer for EmbeddedBusProducer {
         let data_dir = self.state.config.data_dir.clone();
         tokio::task::spawn_blocking(move || {
             let test_path = data_dir.join(".health");
-            std::fs::write(&test_path, b"ok")
-                .map_err(|e| BusError::Connection(format!("embedded bus data_dir not writable: {e}")))?;
+            std::fs::write(&test_path, b"ok").map_err(|e| {
+                BusError::Connection(format!("embedded bus data_dir not writable: {e}"))
+            })?;
             std::fs::remove_file(&test_path)
                 .map_err(|e| BusError::Connection(format!("embedded bus cleanup failed: {e}")))?;
             Ok::<(), BusError>(())

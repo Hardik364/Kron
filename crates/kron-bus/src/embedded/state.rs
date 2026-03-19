@@ -7,8 +7,8 @@ use std::sync::{Arc, Mutex};
 use kron_types::EmbeddedBusConfig;
 use tokio::sync::Notify;
 
-use crate::error::BusError;
 use super::wal::Wal;
+use crate::error::BusError;
 
 /// A single topic's runtime state.
 pub struct TopicEntry {
@@ -79,9 +79,11 @@ impl TopicRegistry {
             );
         }
         // Safety: we just inserted if not present, so this is guaranteed to succeed.
-        self.topics.get_mut(topic_name).ok_or_else(|| BusError::Internal(
-            format!("topic registry entry disappeared after insert for '{topic_name}'"),
-        ))
+        self.topics.get_mut(topic_name).ok_or_else(|| {
+            BusError::Internal(format!(
+                "topic registry entry disappeared after insert for '{topic_name}'"
+            ))
+        })
     }
 
     /// Returns a mutable reference to an existing topic entry.

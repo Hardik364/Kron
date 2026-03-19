@@ -49,7 +49,9 @@ impl RedpandaProducer {
             .set("enable.idempotence", "true")
             .set("acks", "all")
             .create()
-            .map_err(|e| BusError::Connection(format!("failed to create Redpanda producer: {e}")))?;
+            .map_err(|e| {
+                BusError::Connection(format!("failed to create Redpanda producer: {e}"))
+            })?;
 
         tracing::info!(brokers, "Redpanda producer created");
 

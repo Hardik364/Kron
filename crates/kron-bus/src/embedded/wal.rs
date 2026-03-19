@@ -115,19 +115,17 @@ impl Wal {
         // Existing file — validate header.
         self.file.seek(SeekFrom::Start(0))?;
         let mut header = [0u8; 16];
-        self.file.read_exact(&mut header).map_err(|e| BusError::Wal {
-            topic: self.topic.clone(),
-            reason: format!("cannot read WAL header: {e}"),
-        })?;
+        self.file
+            .read_exact(&mut header)
+            .map_err(|e| BusError::Wal {
+                topic: self.topic.clone(),
+                reason: format!("cannot read WAL header: {e}"),
+            })?;
 
-        let magic = u64::from_be_bytes(
-            header[0..8]
-                .try_into()
-                .map_err(|_| BusError::Wal {
-                    topic: self.topic.clone(),
-                    reason: "WAL header too short for magic bytes".to_owned(),
-                })?,
-        );
+        let magic = u64::from_be_bytes(header[0..8].try_into().map_err(|_| BusError::Wal {
+            topic: self.topic.clone(),
+            reason: "WAL header too short for magic bytes".to_owned(),
+        })?);
         if magic != WAL_MAGIC {
             return Err(BusError::Wal {
                 topic: self.topic.clone(),
@@ -135,14 +133,10 @@ impl Wal {
             });
         }
 
-        let version = u64::from_le_bytes(
-            header[8..16]
-                .try_into()
-                .map_err(|_| BusError::Wal {
-                    topic: self.topic.clone(),
-                    reason: "WAL header too short for version bytes".to_owned(),
-                })?,
-        );
+        let version = u64::from_le_bytes(header[8..16].try_into().map_err(|_| BusError::Wal {
+            topic: self.topic.clone(),
+            reason: "WAL header too short for version bytes".to_owned(),
+        })?);
         if version != WAL_VERSION {
             return Err(BusError::Wal {
                 topic: self.topic.clone(),
@@ -163,10 +157,7 @@ impl Wal {
         let mut last_valid_pos = HEADER_SIZE;
 
         loop {
-            let record_start = self
-                .file
-                .seek(SeekFrom::Current(0))
-                .map_err(BusError::Io)?;
+            let record_start = self.file.seek(SeekFrom::Current(0)).map_err(BusError::Io)?;
 
             // Read record_body_len (4 bytes).
             let mut len_buf = [0u8; 4];
@@ -191,28 +182,23 @@ impl Wal {
             if body.len() < 8 {
                 break;
             }
-            let offset = u64::from_le_bytes(
-                body[0..8]
-                    .try_into()
-                    .map_err(|_| BusError::Wal {
-                        topic: self.topic.clone(),
-                        reason: "record body too short to contain offset".to_owned(),
-                    })?,
-            );
+            let offset = u64::from_le_bytes(body[0..8].try_into().map_err(|_| BusError::Wal {
+                topic: self.topic.clone(),
+                reason: "record body too short to contain offset".to_owned(),
+            })?);
 
             // Validate checksum: last 8 bytes of body.
             if body.len() < 16 {
                 break;
             }
             let checksum_offset = body.len() - 8;
-            let stored_checksum = u64::from_le_bytes(
-                body[checksum_offset..]
-                    .try_into()
-                    .map_err(|_| BusError::Wal {
+            let stored_checksum =
+                u64::from_le_bytes(body[checksum_offset..].try_into().map_err(|_| {
+                    BusError::Wal {
                         topic: self.topic.clone(),
                         reason: "record body too short for checksum".to_owned(),
-                    })?,
-            );
+                    }
+                })?);
             let computed_checksum = xxh3_64(&body[..checksum_offset]);
             if stored_checksum != computed_checksum {
                 tracing::warn!(
@@ -277,9 +263,8 @@ impl Wal {
         let key_bytes = key.unwrap_or(&[]);
         let key_len = key_bytes.len() as u16;
 
-        let headers_json = serde_json::to_vec(headers).map_err(|e| {
-            BusError::Serialization(format!("failed to serialize headers: {e}"))
-        })?;
+        let headers_json = serde_json::to_vec(headers)
+            .map_err(|e| BusError::Serialization(format!("failed to serialize headers: {e}")))?;
         let headers_json_len = headers_json.len() as u32;
 
         let payload_len = payload.len() as u32;
@@ -365,20 +350,24 @@ impl Wal {
         if body.len() < 16 {
             return Err(BusError::Wal {
                 topic: topic.to_owned(),
-                reason: format!("record at offset {offset} body too short ({} bytes)", body.len()),
+                reason: format!(
+                    "record at offset {offset} body too short ({} bytes)",
+                    body.len()
+                ),
             });
         }
 
         // Validate checksum.
         let checksum_offset = body.len() - 8;
-        let stored = u64::from_le_bytes(
-            body[checksum_offset..]
-                .try_into()
-                .map_err(|_| BusError::Wal {
-                    topic: topic.to_owned(),
-                    reason: format!("record at offset {offset}: cannot read checksum"),
-                })?,
-        );
+        let stored =
+            u64::from_le_bytes(
+                body[checksum_offset..]
+                    .try_into()
+                    .map_err(|_| BusError::Wal {
+                        topic: topic.to_owned(),
+                        reason: format!("record at offset {offset}: cannot read checksum"),
+                    })?,
+            );
         let computed = xxh3_64(&body[..checksum_offset]);
         if stored != computed {
             return Err(BusError::Wal {
@@ -476,10 +465,7 @@ impl Wal {
         fs::rename(&tmp_path, &self.path)?;
 
         // Reopen the compacted file.
-        self.file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(&self.path)?;
+        self.file = OpenOptions::new().read(true).write(true).open(&self.path)?;
         self.file.seek(SeekFrom::End(0))?;
         self.index = new_index;
 
@@ -526,74 +512,51 @@ fn deserialize_record_body(
         }};
     }
 
-    let offset = u64::from_le_bytes(
-        read_u8_slice!(8)
-            .try_into()
-            .map_err(|_| BusError::Wal {
-                topic: topic.to_owned(),
-                reason: "offset read".to_owned(),
-            })?,
-    );
-    let timestamp_ms = u64::from_le_bytes(
-        read_u8_slice!(8)
-            .try_into()
-            .map_err(|_| BusError::Wal {
-                topic: topic.to_owned(),
-                reason: "timestamp read".to_owned(),
-            })?,
-    );
+    let offset = u64::from_le_bytes(read_u8_slice!(8).try_into().map_err(|_| BusError::Wal {
+        topic: topic.to_owned(),
+        reason: "offset read".to_owned(),
+    })?);
+    let timestamp_ms =
+        u64::from_le_bytes(read_u8_slice!(8).try_into().map_err(|_| BusError::Wal {
+            topic: topic.to_owned(),
+            reason: "timestamp read".to_owned(),
+        })?);
 
-    let id_len = u16::from_le_bytes(
-        read_u8_slice!(2)
-            .try_into()
-            .map_err(|_| BusError::Wal {
-                topic: topic.to_owned(),
-                reason: "id_len read".to_owned(),
-            })?,
-    ) as usize;
+    let id_len = u16::from_le_bytes(read_u8_slice!(2).try_into().map_err(|_| BusError::Wal {
+        topic: topic.to_owned(),
+        reason: "id_len read".to_owned(),
+    })?) as usize;
     let id = std::str::from_utf8(read_u8_slice!(id_len))
         .map_err(|_| BusError::Deserialization("message ID is not valid UTF-8".to_owned()))?
         .to_owned();
 
-    let key_len = u16::from_le_bytes(
-        read_u8_slice!(2)
-            .try_into()
-            .map_err(|_| BusError::Wal {
-                topic: topic.to_owned(),
-                reason: "key_len read".to_owned(),
-            })?,
-    ) as usize;
+    let key_len = u16::from_le_bytes(read_u8_slice!(2).try_into().map_err(|_| BusError::Wal {
+        topic: topic.to_owned(),
+        reason: "key_len read".to_owned(),
+    })?) as usize;
     let key = if key_len > 0 {
         Some(Bytes::copy_from_slice(read_u8_slice!(key_len)))
     } else {
         None
     };
 
-    let headers_json_len = u32::from_le_bytes(
-        read_u8_slice!(4)
-            .try_into()
-            .map_err(|_| BusError::Wal {
-                topic: topic.to_owned(),
-                reason: "headers_json_len read".to_owned(),
-            })?,
-    ) as usize;
-    let headers: HashMap<String, String> =
-        serde_json::from_slice(read_u8_slice!(headers_json_len)).map_err(|e| {
-            BusError::Deserialization(format!("failed to deserialize headers: {e}"))
-        })?;
+    let headers_json_len =
+        u32::from_le_bytes(read_u8_slice!(4).try_into().map_err(|_| BusError::Wal {
+            topic: topic.to_owned(),
+            reason: "headers_json_len read".to_owned(),
+        })?) as usize;
+    let headers: HashMap<String, String> = serde_json::from_slice(read_u8_slice!(headers_json_len))
+        .map_err(|e| BusError::Deserialization(format!("failed to deserialize headers: {e}")))?;
 
-    let payload_len = u32::from_le_bytes(
-        read_u8_slice!(4)
-            .try_into()
-            .map_err(|_| BusError::Wal {
-                topic: topic.to_owned(),
-                reason: "payload_len read".to_owned(),
-            })?,
-    ) as usize;
+    let payload_len =
+        u32::from_le_bytes(read_u8_slice!(4).try_into().map_err(|_| BusError::Wal {
+            topic: topic.to_owned(),
+            reason: "payload_len read".to_owned(),
+        })?) as usize;
     let payload = Bytes::copy_from_slice(read_u8_slice!(payload_len));
 
-    let timestamp = chrono::DateTime::from_timestamp_millis(timestamp_ms as i64)
-        .unwrap_or_else(Utc::now);
+    let timestamp =
+        chrono::DateTime::from_timestamp_millis(timestamp_ms as i64).unwrap_or_else(Utc::now);
 
     Ok(BusMessage {
         id,
@@ -652,8 +615,10 @@ mod tests {
         let dir = tmp_dir();
         {
             let mut wal = Wal::open(dir.path(), "kron.test").unwrap();
-            wal.append("id-1", None, &HashMap::new(), b"payload1", false).unwrap();
-            wal.append("id-2", None, &HashMap::new(), b"payload2", false).unwrap();
+            wal.append("id-1", None, &HashMap::new(), b"payload1", false)
+                .unwrap();
+            wal.append("id-2", None, &HashMap::new(), b"payload2", false)
+                .unwrap();
         }
 
         // Reopen — should rebuild index from file.

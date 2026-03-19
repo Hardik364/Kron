@@ -18,8 +18,8 @@ use async_trait::async_trait;
 use kron_types::{ClickHouseConfig, KronAlert, KronError, KronEvent, TenantContext, TenantId};
 use retry::{with_ch_retry, CircuitBreaker};
 use rows::{
-    alert_to_ch_row, event_to_ch_row, ch_row_to_event, ChAuditLogRow,
-    ChEventRow, SchemaVersionQueryRow, SchemaVersionRow,
+    alert_to_ch_row, ch_row_to_event, event_to_ch_row, ChAuditLogRow, ChEventRow,
+    SchemaVersionQueryRow, SchemaVersionRow,
 };
 use sha2::Digest;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -55,10 +55,7 @@ impl ClickHouseEngine {
     ///
     /// # Errors
     /// Returns `KronError::Storage` if ClickHouse is unreachable at startup.
-    pub async fn new(
-        config: &ClickHouseConfig,
-        migrations_dir: &str,
-    ) -> StorageResult<Self> {
+    pub async fn new(config: &ClickHouseConfig, migrations_dir: &str) -> StorageResult<Self> {
         tracing::info!(
             url = %config.url,
             database = %config.database,
@@ -72,16 +69,9 @@ impl ClickHouseEngine {
             .with_password(&config.password);
 
         // Verify connectivity.
-        client
-            .query("SELECT 1")
-            .execute()
-            .await
-            .map_err(|e| {
-                KronError::Storage(format!(
-                    "ClickHouse unreachable at {}: {e}",
-                    config.url
-                ))
-            })?;
+        client.query("SELECT 1").execute().await.map_err(|e| {
+            KronError::Storage(format!("ClickHouse unreachable at {}: {e}", config.url))
+        })?;
 
         tracing::info!(url = %config.url, "ClickHouse connection verified");
 
@@ -133,8 +123,10 @@ impl ClickHouseEngine {
             .await
             .map_err(|e| KronError::Storage(format!("read schema_versions failed: {e}")))?;
 
-        let applied_map: std::collections::HashMap<i32, String> =
-            applied.into_iter().map(|r| (r.version, r.checksum)).collect();
+        let applied_map: std::collections::HashMap<i32, String> = applied
+            .into_iter()
+            .map(|r| (r.version, r.checksum))
+            .collect();
 
         for mig in &migrations {
             if let Some(existing_cs) = applied_map.get(&mig.version) {
@@ -151,16 +143,12 @@ impl ClickHouseEngine {
 
             tracing::info!(version = mig.version, name = %mig.name, "Applying CH migration");
 
-            self.client
-                .query(&mig.sql)
-                .execute()
-                .await
-                .map_err(|e| {
-                    KronError::Storage(format!(
-                        "CH migration {} ({}) failed: {e}",
-                        mig.version, mig.name
-                    ))
-                })?;
+            self.client.query(&mig.sql).execute().await.map_err(|e| {
+                KronError::Storage(format!(
+                    "CH migration {} ({}) failed: {e}",
+                    mig.version, mig.name
+                ))
+            })?;
 
             // Record in schema_versions.
             let mut ins = self
@@ -298,7 +286,8 @@ impl StorageEngine for ClickHouseEngine {
         })
         .await?;
 
-        self.events_inserted.fetch_add(event_count, Ordering::Relaxed);
+        self.events_inserted
+            .fetch_add(event_count, Ordering::Relaxed);
         metrics::counter!("kron_storage_events_inserted_total",
             "backend" => "clickhouse",
             "tenant_id" => tenant_id.to_string()
@@ -340,12 +329,14 @@ impl StorageEngine for ClickHouseEngine {
                 if let Some(ref f) = filter {
                     if let Some(ref from) = f.from_ts {
                         q = q.bind(
-                            from.timestamp_nanos_opt().unwrap_or_else(|| from.timestamp() * 1_000_000_000),
+                            from.timestamp_nanos_opt()
+                                .unwrap_or_else(|| from.timestamp() * 1_000_000_000),
                         );
                     }
                     if let Some(ref to) = f.to_ts {
                         q = q.bind(
-                            to.timestamp_nanos_opt().unwrap_or_else(|| to.timestamp() * 1_000_000_000),
+                            to.timestamp_nanos_opt()
+                                .unwrap_or_else(|| to.timestamp() * 1_000_000_000),
                         );
                     }
                     if let Some(ref s) = f.source_type {
@@ -512,11 +503,7 @@ impl StorageEngine for ClickHouseEngine {
     }
 
     #[instrument(skip(self, ctx, alert), fields(tenant_id = %ctx.tenant_id()))]
-    async fn update_alert(
-        &self,
-        ctx: &TenantContext,
-        alert: &KronAlert,
-    ) -> StorageResult<()> {
+    async fn update_alert(&self, ctx: &TenantContext, alert: &KronAlert) -> StorageResult<()> {
         let tenant_id = ctx.tenant_id();
         if alert.tenant_id != tenant_id {
             return Err(KronError::TenantIsolationViolation {
@@ -544,16 +531,10 @@ impl StorageEngine for ClickHouseEngine {
             .ok_or_else(|| KronError::Storage("audit log ts out of i64 range".to_string()))?;
 
         // Fetch Merkle chain tip for this tenant.
-        let (prev_hash, chain_seq) = self
-            .fetch_audit_chain_tip(&tenant_id)
-            .await?;
+        let (prev_hash, chain_seq) = self.fetch_audit_chain_tip(&tenant_id).await?;
 
-        let row_hash = Self::compute_audit_hash(
-            &prev_hash,
-            &entry.action,
-            &entry.actor_id,
-            now_nanos,
-        );
+        let row_hash =
+            Self::compute_audit_hash(&prev_hash, &entry.action, &entry.actor_id, now_nanos);
 
         let audit_row = ChAuditLogRow {
             audit_id: uuid::Uuid::new_v4().to_string(),
@@ -650,10 +631,7 @@ impl ClickHouseEngine {
     /// Fetch the Merkle chain tip (`prev_hash`, `next_chain_seq`) for a tenant.
     ///
     /// Returns `("0"*64, 1)` if the tenant has no audit log entries yet.
-    async fn fetch_audit_chain_tip(
-        &self,
-        tenant_id: &TenantId,
-    ) -> StorageResult<(String, u64)> {
+    async fn fetch_audit_chain_tip(&self, tenant_id: &TenantId) -> StorageResult<(String, u64)> {
         #[derive(clickhouse::Row, serde::Deserialize)]
         struct ChainTip {
             row_hash: String,

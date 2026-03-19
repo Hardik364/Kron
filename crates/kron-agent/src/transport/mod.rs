@@ -12,7 +12,9 @@ pub mod grpc;
 
 use async_trait::async_trait;
 
-use kron_types::{EventBatch, EventAck, HeartbeatRequest, HeartbeatResponse, RegisterRequest, RegisterResponse};
+use kron_types::{
+    EventAck, EventBatch, HeartbeatRequest, HeartbeatResponse, RegisterRequest, RegisterResponse,
+};
 
 use crate::error::AgentError;
 

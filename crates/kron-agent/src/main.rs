@@ -131,13 +131,10 @@ fn parse_args() -> Args {
                 std::process::exit(0);
             }
             "--config" => {
-                config_path = iter
-                    .next()
-                    .map(PathBuf::from)
-                    .unwrap_or_else(|| {
-                        eprintln!("ERROR: --config requires a value");
-                        std::process::exit(1);
-                    });
+                config_path = iter.next().map(PathBuf::from).unwrap_or_else(|| {
+                    eprintln!("ERROR: --config requires a value");
+                    std::process::exit(1);
+                });
             }
             "--log-level" => {
                 log_level = iter.next().unwrap_or_else(|| {
@@ -166,8 +163,7 @@ fn parse_args() -> Args {
 /// The log level is set from `--log-level` and can be overridden per-crate
 /// via the `RUST_LOG` environment variable.
 fn init_tracing(log_level: &str) {
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(log_level));
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(log_level));
 
     tracing_subscriber::fmt()
         .json()

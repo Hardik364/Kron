@@ -131,7 +131,11 @@ impl Segment {
         match reader.read_exact(&mut body) {
             Ok(()) => {}
             Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
-                tracing::warn!(offset, body_len, "Partial record in segment (body truncated); stopping drain");
+                tracing::warn!(
+                    offset,
+                    body_len,
+                    "Partial record in segment (body truncated); stopping drain"
+                );
                 return Ok(None);
             }
             Err(e) => return Err(AgentError::Buffer(format!("read body: {e}"))),
@@ -142,7 +146,10 @@ impl Segment {
         match reader.read_exact(&mut cs_buf) {
             Ok(()) => {}
             Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
-                tracing::warn!(offset, "Partial record in segment (checksum truncated); stopping drain");
+                tracing::warn!(
+                    offset,
+                    "Partial record in segment (checksum truncated); stopping drain"
+                );
                 return Ok(None);
             }
             Err(e) => return Err(AgentError::Buffer(format!("read checksum: {e}"))),
@@ -165,8 +172,9 @@ impl Segment {
             return Ok(None);
         }
 
-        let event: KronEvent = serde_json::from_slice(&body)
-            .map_err(|e| AgentError::Buffer(format!("JSON decode event at offset {offset}: {e}")))?;
+        let event: KronEvent = serde_json::from_slice(&body).map_err(|e| {
+            AgentError::Buffer(format!("JSON decode event at offset {offset}: {e}"))
+        })?;
 
         let new_offset = offset + 4 + body_len as u64 + 8;
         Ok(Some((event, new_offset)))

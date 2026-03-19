@@ -45,9 +45,8 @@ impl DuckDbEngine {
     pub fn new(db_path: &str, migrations_dir: &str) -> StorageResult<Self> {
         tracing::info!(db_path = %db_path, "Opening DuckDB database");
 
-        let conn = duckdb::Connection::open(db_path).map_err(|e| {
-            KronError::Storage(format!("failed to open DuckDB at {db_path}: {e}"))
-        })?;
+        let conn = duckdb::Connection::open(db_path)
+            .map_err(|e| KronError::Storage(format!("failed to open DuckDB at {db_path}: {e}")))?;
 
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
@@ -90,10 +89,7 @@ impl DuckDbEngine {
 }
 
 /// Apply migrations synchronously (called inside `spawn_blocking`).
-fn apply_migrations_sync(
-    conn: &duckdb::Connection,
-    migrations_dir: &str,
-) -> StorageResult<()> {
+fn apply_migrations_sync(conn: &duckdb::Connection, migrations_dir: &str) -> StorageResult<()> {
     let migrations = migration::load_migrations(migrations_dir, "duckdb")
         .map_err(|e| KronError::Storage(format!("failed to load migrations: {e}")))?;
 
@@ -115,10 +111,7 @@ fn apply_migrations_sync(
 
     let applied: std::collections::HashMap<i32, String> = stmt
         .query_map([], |row| {
-            Ok((
-                row.get::<_, i32>(0)?,
-                row.get::<_, String>(1)?,
-            ))
+            Ok((row.get::<_, i32>(0)?, row.get::<_, String>(1)?))
         })
         .map_err(|e| KronError::Storage(format!("failed to read applied migrations: {e}")))?
         .filter_map(|r| r.ok())
@@ -396,9 +389,7 @@ fn query_events_sync(
         .collect();
 
     let rows = stmt
-        .query_map(param_refs.as_slice(), |row| {
-            Ok(row_to_event(row))
-        })
+        .query_map(param_refs.as_slice(), |row| Ok(row_to_event(row)))
         .map_err(|e| KronError::Storage(format!("failed to execute query: {e}")))?;
 
     let mut events = Vec::new();
@@ -474,26 +465,24 @@ fn row_to_event(row: &duckdb::Row<'_>) -> Result<KronEvent, KronError> {
     let host_fqdn: Option<String> = row.get(12).ok();
 
     let asset_crit_str: String = row.get(13).unwrap_or_else(|_| "unknown".to_string());
-    let asset_criticality = kron_types::AssetCriticality::from_str(&asset_crit_str)
-        .unwrap_or_default();
+    let asset_criticality =
+        kron_types::AssetCriticality::from_str(&asset_crit_str).unwrap_or_default();
 
     let asset_tags_json: String = row.get(14).unwrap_or_else(|_| "[]".to_string());
-    let asset_tags: Vec<String> =
-        serde_json::from_str(&asset_tags_json).unwrap_or_default();
+    let asset_tags: Vec<String> = serde_json::from_str(&asset_tags_json).unwrap_or_default();
 
     let user_name: Option<String> = row.get(15).ok();
     let user_id: Option<String> = row.get(16).ok();
     let user_domain: Option<String> = row.get(17).ok();
     let user_type_str: Option<String> = row.get(18).ok();
-    let user_type = user_type_str
-        .and_then(|s| kron_types::UserType::from_str(&s).ok());
+    let user_type = user_type_str.and_then(|s| kron_types::UserType::from_str(&s).ok());
 
     let event_type: String = row
         .get(19)
         .map_err(|e| KronError::Storage(format!("failed to read event_type: {e}")))?;
     let event_category_str: Option<String> = row.get(20).ok();
-    let event_category = event_category_str
-        .and_then(|s| kron_types::EventCategory::from_str(&s).ok());
+    let event_category =
+        event_category_str.and_then(|s| kron_types::EventCategory::from_str(&s).ok());
     let event_action: Option<String> = row.get(21).ok();
 
     let src_ip_str: Option<String> = row.get(22).ok();
@@ -508,8 +497,7 @@ fn row_to_event(row: &duckdb::Row<'_>) -> Result<KronEvent, KronError> {
     let packets_in: Option<u32> = row.get(31).ok();
     let packets_out: Option<u32> = row.get(32).ok();
     let direction_str: Option<String> = row.get(33).ok();
-    let direction = direction_str
-        .and_then(|s| kron_types::NetworkDirection::from_str(&s).ok());
+    let direction = direction_str.and_then(|s| kron_types::NetworkDirection::from_str(&s).ok());
 
     let process_name: Option<String> = row.get(34).ok();
     let process_pid: Option<u32> = row.get(35).ok();
@@ -524,12 +512,10 @@ fn row_to_event(row: &duckdb::Row<'_>) -> Result<KronEvent, KronError> {
     let file_hash: Option<String> = row.get(43).ok();
     let file_size: Option<u64> = row.get(44).ok();
     let file_action_str: Option<String> = row.get(45).ok();
-    let file_action = file_action_str
-        .and_then(|s| kron_types::FileAction::from_str(&s).ok());
+    let file_action = file_action_str.and_then(|s| kron_types::FileAction::from_str(&s).ok());
 
     let auth_result_str: Option<String> = row.get(46).ok();
-    let auth_result = auth_result_str
-        .and_then(|s| kron_types::AuthResult::from_str(&s).ok());
+    let auth_result = auth_result_str.and_then(|s| kron_types::AuthResult::from_str(&s).ok());
     let auth_method: Option<String> = row.get(47).ok();
     let auth_protocol: Option<String> = row.get(48).ok();
 
@@ -655,8 +641,7 @@ impl StorageEngine for DuckDbEngine {
             insert_events_sync(&conn, &tenant_id, &events)
         })
         .await
-        .map_err(|e| KronError::Storage(format!("insert task panicked: {e}")))?
-        ?;
+        .map_err(|e| KronError::Storage(format!("insert task panicked: {e}")))??;
 
         self.events_inserted.fetch_add(inserted, Ordering::Relaxed);
         Ok(inserted)
@@ -677,8 +662,7 @@ impl StorageEngine for DuckDbEngine {
             query_events_sync(&conn, &tenant_id, &filter, limit)
         })
         .await
-        .map_err(|e| KronError::Storage(format!("query task panicked: {e}")))?
-        ?;
+        .map_err(|e| KronError::Storage(format!("query task panicked: {e}")))??;
 
         self.queries_executed.fetch_add(1, Ordering::Relaxed);
         Ok(events)
@@ -739,7 +723,10 @@ impl StorageEngine for DuckDbEngine {
         // Alert insertion is simpler; we'll implement the full schema mapping
         // when the alert engine is built in Phase 2.5
         let count = alerts.len() as u64;
-        tracing::debug!(count, "Alert insertion placeholder — full mapping in Phase 2.5");
+        tracing::debug!(
+            count,
+            "Alert insertion placeholder — full mapping in Phase 2.5"
+        );
         Ok(count)
     }
 
@@ -766,11 +753,7 @@ impl StorageEngine for DuckDbEngine {
     }
 
     #[instrument(skip(self, ctx, alert), fields(tenant_id = %ctx.tenant_id()))]
-    async fn update_alert(
-        &self,
-        ctx: &TenantContext,
-        alert: &KronAlert,
-    ) -> StorageResult<()> {
+    async fn update_alert(&self, ctx: &TenantContext, alert: &KronAlert) -> StorageResult<()> {
         let tenant_id = ctx.tenant_id();
 
         if alert.tenant_id != tenant_id {
@@ -921,24 +904,24 @@ mod tests {
 
     #[tokio::test]
     async fn test_duckdb_apply_migrations() {
-        let engine = DuckDbEngine::in_memory(&test_migrations_dir())
-            .expect("must create in-memory db");
+        let engine =
+            DuckDbEngine::in_memory(&test_migrations_dir()).expect("must create in-memory db");
         let result = engine.apply_migrations().await;
         assert!(result.is_ok(), "migrations failed: {:?}", result.err());
     }
 
     #[tokio::test]
     async fn test_duckdb_health_check() {
-        let engine = DuckDbEngine::in_memory(&test_migrations_dir())
-            .expect("must create in-memory db");
+        let engine =
+            DuckDbEngine::in_memory(&test_migrations_dir()).expect("must create in-memory db");
         let result = engine.health_check().await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn test_duckdb_insert_and_query_events() {
-        let engine = DuckDbEngine::in_memory(&test_migrations_dir())
-            .expect("must create in-memory db");
+        let engine =
+            DuckDbEngine::in_memory(&test_migrations_dir()).expect("must create in-memory db");
         engine.apply_migrations().await.expect("migrations");
 
         let ctx = make_test_ctx();
@@ -966,8 +949,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_duckdb_tenant_isolation_on_insert() {
-        let engine = DuckDbEngine::in_memory(&test_migrations_dir())
-            .expect("must create in-memory db");
+        let engine =
+            DuckDbEngine::in_memory(&test_migrations_dir()).expect("must create in-memory db");
         engine.apply_migrations().await.expect("migrations");
 
         let ctx = make_test_ctx();
@@ -983,8 +966,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_duckdb_tenant_isolation_on_query() {
-        let engine = DuckDbEngine::in_memory(&test_migrations_dir())
-            .expect("must create in-memory db");
+        let engine =
+            DuckDbEngine::in_memory(&test_migrations_dir()).expect("must create in-memory db");
         engine.apply_migrations().await.expect("migrations");
 
         let ctx_a = make_test_ctx();
@@ -1022,8 +1005,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_duckdb_get_event_by_id() {
-        let engine = DuckDbEngine::in_memory(&test_migrations_dir())
-            .expect("must create in-memory db");
+        let engine =
+            DuckDbEngine::in_memory(&test_migrations_dir()).expect("must create in-memory db");
         engine.apply_migrations().await.expect("migrations");
 
         let ctx = make_test_ctx();
@@ -1040,13 +1023,16 @@ mod tests {
             .await
             .expect("get must succeed");
         assert!(found.is_some());
-        assert_eq!(found.as_ref().map(|e| e.event_id.to_string()), Some(event_id));
+        assert_eq!(
+            found.as_ref().map(|e| e.event_id.to_string()),
+            Some(event_id)
+        );
     }
 
     #[tokio::test]
     async fn test_duckdb_get_event_not_found() {
-        let engine = DuckDbEngine::in_memory(&test_migrations_dir())
-            .expect("must create in-memory db");
+        let engine =
+            DuckDbEngine::in_memory(&test_migrations_dir()).expect("must create in-memory db");
         engine.apply_migrations().await.expect("migrations");
 
         let ctx = make_test_ctx();
@@ -1059,8 +1045,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_duckdb_insert_audit_log() {
-        let engine = DuckDbEngine::in_memory(&test_migrations_dir())
-            .expect("must create in-memory db");
+        let engine =
+            DuckDbEngine::in_memory(&test_migrations_dir()).expect("must create in-memory db");
         engine.apply_migrations().await.expect("migrations");
 
         let ctx = make_test_ctx();
@@ -1075,13 +1061,17 @@ mod tests {
         };
 
         let result = engine.insert_audit_log(&ctx, entry).await;
-        assert!(result.is_ok(), "audit log insert failed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "audit log insert failed: {:?}",
+            result.err()
+        );
     }
 
     #[tokio::test]
     async fn test_duckdb_batch_insert_10000_events() {
-        let engine = DuckDbEngine::in_memory(&test_migrations_dir())
-            .expect("must create in-memory db");
+        let engine =
+            DuckDbEngine::in_memory(&test_migrations_dir()).expect("must create in-memory db");
         engine.apply_migrations().await.expect("migrations");
 
         let ctx = make_test_ctx();
@@ -1105,8 +1095,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_duckdb_query_with_filter() {
-        let engine = DuckDbEngine::in_memory(&test_migrations_dir())
-            .expect("must create in-memory db");
+        let engine =
+            DuckDbEngine::in_memory(&test_migrations_dir()).expect("must create in-memory db");
         engine.apply_migrations().await.expect("migrations");
 
         let ctx = make_test_ctx();
@@ -1120,8 +1110,7 @@ mod tests {
             .await
             .expect("insert");
 
-        let filter = EventFilter::new()
-            .with_event_type("process_create".to_string());
+        let filter = EventFilter::new().with_event_type("process_create".to_string());
         let events = engine
             .query_events(&ctx, Some(filter), 100)
             .await

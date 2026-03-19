@@ -72,11 +72,7 @@ impl EventFilter {
     }
 
     /// Filter by timestamp range.
-    pub fn with_timestamp_range(
-        mut self,
-        from: DateTime<Utc>,
-        to: DateTime<Utc>,
-    ) -> Self {
+    pub fn with_timestamp_range(mut self, from: DateTime<Utc>, to: DateTime<Utc>) -> Self {
         self.from_ts = Some(from);
         self.to_ts = Some(to);
         self
@@ -154,14 +150,8 @@ impl QueryBuilder {
     /// Build a SELECT query for events with tenant isolation.
     ///
     /// Always injects `AND tenant_id = ?` to enforce gate 2 of multi-tenancy isolation.
-    pub fn select_events(
-        filter: Option<&EventFilter>,
-        tenant_id: &str,
-        limit: u32,
-    ) -> Self {
-        let mut sql = String::from(
-            "SELECT * FROM events WHERE tenant_id = ?",
-        );
+    pub fn select_events(filter: Option<&EventFilter>, tenant_id: &str, limit: u32) -> Self {
+        let mut sql = String::from("SELECT * FROM events WHERE tenant_id = ?");
         let mut params = vec![QueryParam::String(tenant_id.to_string())];
 
         if let Some(f) = filter {
@@ -222,11 +212,7 @@ impl QueryBuilder {
     }
 
     /// Build a SELECT query for alerts with tenant isolation.
-    pub fn select_alerts(
-        tenant_id: &str,
-        limit: u32,
-        offset: u32,
-    ) -> Self {
+    pub fn select_alerts(tenant_id: &str, limit: u32, offset: u32) -> Self {
         let sql = String::from(
             "SELECT * FROM alerts WHERE tenant_id = ? \
              ORDER BY created_at DESC LIMIT ? OFFSET ?",
@@ -242,9 +228,7 @@ impl QueryBuilder {
 
     /// Build a SELECT query for a single event by ID (with tenant isolation).
     pub fn get_event(tenant_id: &str, event_id: &str) -> Self {
-        let sql = String::from(
-            "SELECT * FROM events WHERE tenant_id = ? AND event_id = ?",
-        );
+        let sql = String::from("SELECT * FROM events WHERE tenant_id = ? AND event_id = ?");
         let params = vec![
             QueryParam::String(tenant_id.to_string()),
             QueryParam::String(event_id.to_string()),
@@ -255,9 +239,7 @@ impl QueryBuilder {
 
     /// Build a SELECT query for a single alert by ID (with tenant isolation).
     pub fn get_alert(tenant_id: &str, alert_id: &str) -> Self {
-        let sql = String::from(
-            "SELECT * FROM alerts WHERE tenant_id = ? AND alert_id = ?",
-        );
+        let sql = String::from("SELECT * FROM alerts WHERE tenant_id = ? AND alert_id = ?");
         let params = vec![
             QueryParam::String(tenant_id.to_string()),
             QueryParam::String(alert_id.to_string()),
@@ -308,8 +290,7 @@ mod tests {
 
     #[test]
     fn test_query_builder_always_includes_tenant_id() {
-        let builder =
-            QueryBuilder::select_events(None, "tenant-abc", 100);
+        let builder = QueryBuilder::select_events(None, "tenant-abc", 100);
         assert!(builder.sql.contains("tenant_id = ?"));
     }
 }

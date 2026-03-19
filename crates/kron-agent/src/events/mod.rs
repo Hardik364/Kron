@@ -122,7 +122,11 @@ pub fn process_create_to_kron_event(
         host_fqdn: None,
         asset_criticality: AssetCriticality::Unknown,
         asset_tags: Vec::new(),
-        user_name: if username.is_empty() { None } else { Some(username) },
+        user_name: if username.is_empty() {
+            None
+        } else {
+            Some(username)
+        },
         user_id: Some(ev.header.uid.to_string()),
         user_domain: None,
         user_type: None,

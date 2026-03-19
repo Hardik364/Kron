@@ -78,9 +78,7 @@ impl AdaptiveBus {
                 })?;
                 Ok(Box::new(EmbeddedBusProducer::new(Arc::clone(state))))
             }
-            DeploymentMode::Standard | DeploymentMode::Enterprise => {
-                self.new_redpanda_producer()
-            }
+            DeploymentMode::Standard | DeploymentMode::Enterprise => self.new_redpanda_producer(),
         }
     }
 
