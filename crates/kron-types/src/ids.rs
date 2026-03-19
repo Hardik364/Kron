@@ -94,6 +94,14 @@ impl fmt::Display for EventId {
     }
 }
 
+impl FromStr for EventId {
+    type Err = uuid::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self(Uuid::parse_str(s)?))
+    }
+}
+
 /// A unique identifier for a KRON alert.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -131,6 +139,14 @@ impl fmt::Display for AlertId {
     }
 }
 
+impl FromStr for AlertId {
+    type Err = uuid::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self(Uuid::parse_str(s)?))
+    }
+}
+
 /// A unique identifier for a KRON detection rule.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -159,6 +175,14 @@ impl RuleId {
 impl Default for RuleId {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl FromStr for RuleId {
+    type Err = uuid::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self(Uuid::parse_str(s)?))
     }
 }
 

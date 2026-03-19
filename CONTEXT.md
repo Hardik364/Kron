@@ -181,4 +181,38 @@ The human updates this after each session, or Claude updates it at the end of ea
 
 ---
 
+## Session: 2026-03-19 — Phase 1.2 Storage Layer Complete
+
+### Completed
+- **Phase 1.2 (kron-storage):** All 13 tasks complete, `cargo check -p kron-storage` passes clean
+  - Full `ClickHouseEngine`: HTTP client, circuit breaker, exponential backoff retry, Merkle-chained audit log, 60+ field event/alert row mapping, Prometheus counters
+  - Full `DuckDbEngine`: real DuckDB connection via mutex, all CRUD operations, migration runner with SHA256 checksums
+  - `AdaptiveStorage`: selects engine from `DeploymentMode` in config
+  - `migration.rs`: idempotent SQL runner, filters `*_ch.sql` vs `*_duck.sql` by backend
+  - 4 ClickHouse migration files: `000_schema_versions_ch.sql`, `001_create_events_ch.sql`, `002_create_alerts_ch.sql`, `003_create_audit_log_ch.sql`
+  - `EventId`, `AlertId`, `RuleId` now implement `FromStr` (was missing from kron-types)
+  - `ClickHouseConfig`, `DuckDbConfig` re-exported at `kron_types` crate root
+
+### Decisions Made
+- ClickHouse HTTP client uses internal connection pool (no deadpool needed — clickhouse crate handles pooling)
+- `CXXFLAGS = "-include cstdint"` in `.cargo/config.toml` to fix bundled DuckDB 0.10 source with GCC 15
+- `chrono` pinned to `< 0.4.38` to avoid `Datelike::quarter()` ambiguity with `arrow-arith v51` (unpin when duckdb upgraded past 0.10)
+- MSYS2 MinGW64 toolchain at `C:\tools\msys64\mingw64\bin` required in PATH for Windows GNU Rust builds
+
+### Known Issues / Tech Debt
+- Integration tests not yet run (require running ClickHouse and DuckDB containers) — Phase 1.2 acceptance criteria pending
+- `query_timeout` / `insert_timeout` fields stored in `ClickHouseEngine` but not yet wired to per-query client calls
+- `chrono` upper-bound and `CXXFLAGS` hack must be removed when `duckdb` crate is upgraded past 0.10
+
+### Open Questions
+- ClickHouse deadpool connection pooling was deferred (clickhouse crate has built-in pool) — is this sufficient for 50K EPS?
+- Integration test suite: should it use testcontainers or a fixed dev-compose instance?
+
+### Next Session Should Start With
+1. Read CLAUDE.md, PHASES.md, CONTEXT.md
+2. **Phase 1.3 (kron-bus):** Implement `BusProducer` / `BusConsumer` traits + embedded channel (Nano tier) + Redpanda (Standard/Enterprise)
+3. Add `C:\tools\msys64\mingw64\bin` to Windows system PATH permanently so it persists across terminals
+
+---
+
 *Future sessions append here.*

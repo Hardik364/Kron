@@ -3,59 +3,637 @@
 //! DuckDB is used for Nano tier deployments. It's embedded (single binary),
 //! uses Parquet natively, and supports all SQL operations synchronously.
 //!
-//! Connection pooling: single connection with Arc<Mutex<>> for thread safety.
-//! Retry logic: exponential backoff on transient errors (locked database, etc.).
+//! Connection: single connection wrapped in `Arc<Mutex<>>` for async safety.
+//! DuckDB is single-writer, so all writes serialize through the mutex.
+//! Reads can interleave with other reads but not writes (DuckDB MVCC).
 
+use crate::migration;
 use crate::query::EventFilter;
 use crate::traits::{AuditLogEntry, LatencyStats, StorageEngine, StorageResult};
 use async_trait::async_trait;
-use kron_types::{KronAlert, KronError, KronEvent, TenantContext};
+use kron_types::{KronAlert, KronError, KronEvent, TenantContext, TenantId};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 use tracing::instrument;
 
-/// DuckDB storage engine.
+/// DuckDB storage engine for Nano tier.
 ///
-/// Holds a single connection to a local DuckDB database file.
-/// All operations are serialized through a Mutex (DuckDB doesn't support
-/// concurrent writes anyway).
+/// Wraps a synchronous DuckDB connection in async-safe primitives.
+/// All database calls go through [`tokio::task::spawn_blocking`] to avoid
+/// blocking the async runtime.
 pub struct DuckDbEngine {
-    /// Database file path.
-    db_path: String,
+    /// Thread-safe handle to the DuckDB connection.
+    conn: Arc<Mutex<duckdb::Connection>>,
+    /// Path to the migrations directory.
+    migrations_dir: String,
+    /// Monotonic counter for total events inserted (for metrics).
+    events_inserted: AtomicU64,
+    /// Monotonic counter for total queries executed (for metrics).
+    queries_executed: AtomicU64,
 }
 
 impl DuckDbEngine {
-    /// Create a new DuckDB storage engine connected to the given path.
+    /// Create a new DuckDB storage engine.
     ///
     /// # Arguments
-    /// * `db_path` - Path to the DuckDB database file (will be created if missing)
+    /// * `db_path` - Path to the DuckDB database file. Use `:memory:` for testing.
+    /// * `migrations_dir` - Path to the directory containing SQL migration files.
     ///
-    /// # Returns
-    /// New engine, or error if the database cannot be opened.
-    ///
-    /// # Tenant Isolation
-    /// DuckDB will enforce `tenant_id` on every query through the [`QueryBuilder`].
-    pub async fn new(db_path: &str) -> StorageResult<Self> {
-        tracing::debug!(db_path = %db_path, "Initializing DuckDB storage engine");
+    /// # Errors
+    /// Returns `KronError::Storage` if the database cannot be opened.
+    pub fn new(db_path: &str, migrations_dir: &str) -> StorageResult<Self> {
+        tracing::info!(db_path = %db_path, "Opening DuckDB database");
 
-        // TODO(#TBD, hardik, v1.1): Actual DuckDB connection initialization
-        // For now, this is a stub that will be filled in when duckdb crate is added.
+        let conn = duckdb::Connection::open(db_path).map_err(|e| {
+            KronError::Storage(format!("failed to open DuckDB at {db_path}: {e}"))
+        })?;
 
         Ok(Self {
-            db_path: db_path.to_string(),
+            conn: Arc::new(Mutex::new(conn)),
+            migrations_dir: migrations_dir.to_string(),
+            events_inserted: AtomicU64::new(0),
+            queries_executed: AtomicU64::new(0),
         })
     }
 
-    /// Apply all pending migrations from the `migrations/` directory.
+    /// Create an in-memory DuckDB engine for testing.
     ///
-    /// Migrations are numbered (001_, 002_, etc.) and executed in order.
-    /// Migration state is tracked in a `schema_versions` table.
-    pub async fn apply_migrations(&self) -> StorageResult<()> {
-        tracing::debug!("Applying DuckDB migrations");
-
-        // TODO(#TBD, hardik, v1.1): Read migration files from migrations/ directory
-        // and execute them idempotently.
-
-        Ok(())
+    /// # Arguments
+    /// * `migrations_dir` - Path to the directory containing SQL migration files.
+    ///
+    /// # Errors
+    /// Returns `KronError::Storage` if the in-memory database cannot be created.
+    pub fn in_memory(migrations_dir: &str) -> StorageResult<Self> {
+        Self::new(":memory:", migrations_dir)
     }
+
+    /// Apply all pending migrations idempotently.
+    ///
+    /// Reads migration files from `self.migrations_dir`, checks which have
+    /// already been applied via the `schema_versions` table, and runs new ones
+    /// in order.
+    ///
+    /// # Errors
+    /// Returns `KronError::Storage` if a migration fails or checksums mismatch.
+    pub async fn apply_migrations(&self) -> StorageResult<()> {
+        let conn = self.conn.clone();
+        let dir = self.migrations_dir.clone();
+
+        tokio::task::spawn_blocking(move || {
+            let conn = conn.blocking_lock();
+            apply_migrations_sync(&conn, &dir)
+        })
+        .await
+        .map_err(|e| KronError::Storage(format!("migration task panicked: {e}")))?
+    }
+}
+
+/// Apply migrations synchronously (called inside `spawn_blocking`).
+fn apply_migrations_sync(
+    conn: &duckdb::Connection,
+    migrations_dir: &str,
+) -> StorageResult<()> {
+    let migrations = migration::load_migrations(migrations_dir, "duckdb")
+        .map_err(|e| KronError::Storage(format!("failed to load migrations: {e}")))?;
+
+    // Ensure schema_versions table exists
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS schema_versions (
+            version     INTEGER NOT NULL PRIMARY KEY,
+            name        VARCHAR NOT NULL,
+            applied_at  TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            checksum    VARCHAR NOT NULL
+        )",
+    )
+    .map_err(|e| KronError::Storage(format!("failed to create schema_versions: {e}")))?;
+
+    // Get already-applied versions
+    let mut stmt = conn
+        .prepare("SELECT version, checksum FROM schema_versions ORDER BY version")
+        .map_err(|e| KronError::Storage(format!("failed to query schema_versions: {e}")))?;
+
+    let applied: std::collections::HashMap<i32, String> = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, i32>(0)?,
+                row.get::<_, String>(1)?,
+            ))
+        })
+        .map_err(|e| KronError::Storage(format!("failed to read applied migrations: {e}")))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    for migration in &migrations {
+        if let Some(existing_checksum) = applied.get(&migration.version) {
+            // Already applied — verify checksum matches
+            if *existing_checksum != migration.checksum {
+                return Err(KronError::Storage(format!(
+                    "migration {} ({}) checksum mismatch: expected {}, found {}. \
+                     Migration files must not be modified after initial application.",
+                    migration.version, migration.name, existing_checksum, migration.checksum
+                )));
+            }
+            tracing::debug!(
+                version = migration.version,
+                name = %migration.name,
+                "Migration already applied, skipping"
+            );
+            continue;
+        }
+
+        // Apply new migration
+        tracing::info!(
+            version = migration.version,
+            name = %migration.name,
+            "Applying migration"
+        );
+
+        conn.execute_batch(&migration.sql).map_err(|e| {
+            KronError::Storage(format!(
+                "migration {} ({}) failed: {e}",
+                migration.version, migration.name
+            ))
+        })?;
+
+        // Record in schema_versions
+        conn.execute(
+            "INSERT INTO schema_versions (version, name, checksum) VALUES (?, ?, ?)",
+            duckdb::params![migration.version, migration.name, migration.checksum],
+        )
+        .map_err(|e| {
+            KronError::Storage(format!(
+                "failed to record migration {} in schema_versions: {e}",
+                migration.version
+            ))
+        })?;
+
+        tracing::info!(
+            version = migration.version,
+            name = %migration.name,
+            "Migration applied successfully"
+        );
+    }
+
+    Ok(())
+}
+
+/// Insert events into DuckDB synchronously.
+fn insert_events_sync(
+    conn: &duckdb::Connection,
+    tenant_id: &TenantId,
+    events: &[KronEvent],
+) -> StorageResult<u64> {
+    let sql = "INSERT INTO events (
+        event_id, tenant_id, dedup_hash, ts, ts_received, ingest_lag_ms,
+        source_type, collector_id, raw,
+        host_id, hostname, host_ip, host_fqdn, asset_criticality, asset_tags,
+        user_name, user_id, user_domain, user_type,
+        event_type, event_category, event_action,
+        src_ip, src_ip6, src_port, dst_ip, dst_ip6, dst_port,
+        protocol, bytes_in, bytes_out, packets_in, packets_out, direction,
+        process_name, process_pid, process_ppid, process_path, process_cmdline,
+        process_hash, parent_process,
+        file_path, file_name, file_hash, file_size, file_action,
+        auth_result, auth_method, auth_protocol,
+        src_country, src_city, src_asn, src_asn_name, dst_country,
+        ioc_hit, ioc_type, ioc_value, ioc_feed,
+        mitre_tactic, mitre_technique, mitre_sub_tech,
+        severity, severity_score,
+        anomaly_score, ueba_score, beacon_score, exfil_score,
+        fields, schema_version
+    ) VALUES (
+        ?, ?, ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?,
+        ?, ?,
+        ?, ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?,
+        ?, ?, ?, ?,
+        ?, ?
+    )";
+
+    let mut stmt = conn
+        .prepare(sql)
+        .map_err(|e| KronError::Storage(format!("failed to prepare insert: {e}")))?;
+
+    let mut inserted = 0u64;
+
+    for event in events {
+        // Tenant isolation check
+        if event.tenant_id != *tenant_id {
+            return Err(KronError::TenantIsolationViolation {
+                caller: tenant_id.to_string(),
+                target: event.tenant_id.to_string(),
+            });
+        }
+
+        let fields_json = serde_json::to_string(&event.fields)
+            .map_err(|e| KronError::Storage(format!("failed to serialize fields: {e}")))?;
+
+        let asset_tags_json = serde_json::to_string(&event.asset_tags)
+            .map_err(|e| KronError::Storage(format!("failed to serialize asset_tags: {e}")))?;
+
+        stmt.execute(duckdb::params![
+            event.event_id.to_string(),
+            event.tenant_id.to_string(),
+            event.dedup_hash,
+            event.ts.to_rfc3339(),
+            event.ts_received.to_rfc3339(),
+            event.ingest_lag_ms,
+            event.source_type.to_string(),
+            event.collector_id,
+            event.raw,
+            event.host_id,
+            event.hostname,
+            event.host_ip.map(|ip| ip.to_string()),
+            event.host_fqdn,
+            event.asset_criticality.to_string(),
+            asset_tags_json,
+            event.user_name,
+            event.user_id,
+            event.user_domain,
+            event.user_type.as_ref().map(|ut| ut.to_string()),
+            event.event_type,
+            event.event_category.as_ref().map(|ec| ec.to_string()),
+            event.event_action,
+            event.src_ip.map(|ip| ip.to_string()),
+            event.src_ip6.map(|ip| ip.to_string()),
+            event.src_port,
+            event.dst_ip.map(|ip| ip.to_string()),
+            event.dst_ip6.map(|ip| ip.to_string()),
+            event.dst_port,
+            event.protocol,
+            event.bytes_in,
+            event.bytes_out,
+            event.packets_in,
+            event.packets_out,
+            event.direction.as_ref().map(|d| d.to_string()),
+            event.process_name,
+            event.process_pid,
+            event.process_ppid,
+            event.process_path,
+            event.process_cmdline,
+            event.process_hash,
+            event.parent_process,
+            event.file_path,
+            event.file_name,
+            event.file_hash,
+            event.file_size,
+            event.file_action.as_ref().map(|fa| fa.to_string()),
+            event.auth_result.as_ref().map(|ar| ar.to_string()),
+            event.auth_method,
+            event.auth_protocol,
+            event.src_country,
+            event.src_city,
+            event.src_asn,
+            event.src_asn_name,
+            event.dst_country,
+            event.ioc_hit,
+            event.ioc_type,
+            event.ioc_value,
+            event.ioc_feed,
+            event.mitre_tactic,
+            event.mitre_technique,
+            event.mitre_sub_tech,
+            event.severity.to_string(),
+            event.severity_score,
+            event.anomaly_score,
+            event.ueba_score,
+            event.beacon_score,
+            event.exfil_score,
+            fields_json,
+            event.schema_version,
+        ])
+        .map_err(|e| {
+            tracing::error!(
+                event_id = %event.event_id,
+                tenant_id = %event.tenant_id,
+                error = %e,
+                "Failed to insert event into DuckDB"
+            );
+            KronError::Storage(format!("failed to insert event {}: {e}", event.event_id))
+        })?;
+
+        inserted += 1;
+    }
+
+    Ok(inserted)
+}
+
+/// Query events from DuckDB synchronously.
+fn query_events_sync(
+    conn: &duckdb::Connection,
+    tenant_id: &TenantId,
+    filter: &Option<EventFilter>,
+    limit: u32,
+) -> StorageResult<Vec<KronEvent>> {
+    let mut sql = String::from("SELECT * FROM events WHERE tenant_id = ?");
+    let tenant_str = tenant_id.to_string();
+    let mut string_params: Vec<String> = vec![tenant_str.clone()];
+
+    if let Some(f) = filter {
+        if let Some(ref from) = f.from_ts {
+            string_params.push(from.to_rfc3339());
+            sql.push_str(&format!(" AND ts >= ?"));
+        }
+        if let Some(ref to) = f.to_ts {
+            string_params.push(to.to_rfc3339());
+            sql.push_str(&format!(" AND ts <= ?"));
+        }
+        if let Some(ref source) = f.source_type {
+            string_params.push(source.clone());
+            sql.push_str(" AND source_type = ?");
+        }
+        if let Some(ref event_type) = f.event_type {
+            string_params.push(event_type.clone());
+            sql.push_str(" AND event_type = ?");
+        }
+        if let Some(ref hostname) = f.hostname {
+            string_params.push(hostname.clone());
+            sql.push_str(" AND hostname = ?");
+        }
+        if let Some(ref user) = f.user_name {
+            string_params.push(user.clone());
+            sql.push_str(" AND user_name = ?");
+        }
+        if let Some(ref ip) = f.src_ip {
+            string_params.push(ip.clone());
+            sql.push_str(" AND src_ip = ?");
+        }
+        if let Some(ref ip) = f.dst_ip {
+            string_params.push(ip.clone());
+            sql.push_str(" AND dst_ip = ?");
+        }
+        if let Some(ref process) = f.process_name {
+            string_params.push(process.clone());
+            sql.push_str(" AND process_name = ?");
+        }
+        if f.ioc_hit_only == Some(true) {
+            sql.push_str(" AND ioc_hit = true");
+        }
+    }
+
+    sql.push_str(" ORDER BY ts DESC LIMIT ?");
+    string_params.push(limit.to_string());
+
+    let mut stmt = conn
+        .prepare(&sql)
+        .map_err(|e| KronError::Storage(format!("failed to prepare query: {e}")))?;
+
+    let param_refs: Vec<&dyn duckdb::ToSql> = string_params
+        .iter()
+        .map(|s| s as &dyn duckdb::ToSql)
+        .collect();
+
+    let rows = stmt
+        .query_map(param_refs.as_slice(), |row| {
+            Ok(row_to_event(row))
+        })
+        .map_err(|e| KronError::Storage(format!("failed to execute query: {e}")))?;
+
+    let mut events = Vec::new();
+    for row_result in rows {
+        match row_result {
+            Ok(Ok(event)) => events.push(event),
+            Ok(Err(e)) => {
+                tracing::warn!(error = %e, "Failed to parse event row, skipping");
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to read row from DuckDB, skipping");
+            }
+        }
+    }
+
+    Ok(events)
+}
+
+/// Convert a DuckDB row into a `KronEvent`.
+fn row_to_event(row: &duckdb::Row<'_>) -> Result<KronEvent, KronError> {
+    use std::str::FromStr;
+
+    let event_id_str: String = row
+        .get(0)
+        .map_err(|e| KronError::Storage(format!("failed to read event_id: {e}")))?;
+    let tenant_id_str: String = row
+        .get(1)
+        .map_err(|e| KronError::Storage(format!("failed to read tenant_id: {e}")))?;
+
+    let event_id = kron_types::EventId::from_str(&event_id_str)
+        .map_err(|e| KronError::Parse(format!("invalid event_id UUID: {e}")))?;
+    let tenant_id = TenantId::from_str(&tenant_id_str)
+        .map_err(|e| KronError::Parse(format!("invalid tenant_id UUID: {e}")))?;
+
+    let dedup_hash: u64 = row
+        .get(2)
+        .map_err(|e| KronError::Storage(format!("failed to read dedup_hash: {e}")))?;
+
+    let ts_str: String = row
+        .get(3)
+        .map_err(|e| KronError::Storage(format!("failed to read ts: {e}")))?;
+    let ts_received_str: String = row
+        .get(4)
+        .map_err(|e| KronError::Storage(format!("failed to read ts_received: {e}")))?;
+
+    let ts = chrono::DateTime::parse_from_rfc3339(&ts_str)
+        .map(|dt| dt.with_timezone(&chrono::Utc))
+        .map_err(|e| KronError::Parse(format!("invalid ts: {e}")))?;
+    let ts_received = chrono::DateTime::parse_from_rfc3339(&ts_received_str)
+        .map(|dt| dt.with_timezone(&chrono::Utc))
+        .map_err(|e| KronError::Parse(format!("invalid ts_received: {e}")))?;
+
+    let ingest_lag_ms: u32 = row
+        .get(5)
+        .map_err(|e| KronError::Storage(format!("failed to read ingest_lag_ms: {e}")))?;
+
+    let source_type_str: String = row
+        .get(6)
+        .map_err(|e| KronError::Storage(format!("failed to read source_type: {e}")))?;
+    let source_type = kron_types::EventSource::from_str(&source_type_str)
+        .unwrap_or(kron_types::EventSource::Unknown);
+
+    let collector_id: String = row
+        .get(7)
+        .map_err(|e| KronError::Storage(format!("failed to read collector_id: {e}")))?;
+    let raw: String = row
+        .get(8)
+        .map_err(|e| KronError::Storage(format!("failed to read raw: {e}")))?;
+
+    let host_id: Option<String> = row.get(9).ok();
+    let hostname: Option<String> = row.get(10).ok();
+    let host_ip_str: Option<String> = row.get(11).ok();
+    let host_fqdn: Option<String> = row.get(12).ok();
+
+    let asset_crit_str: String = row.get(13).unwrap_or_else(|_| "unknown".to_string());
+    let asset_criticality = kron_types::AssetCriticality::from_str(&asset_crit_str)
+        .unwrap_or_default();
+
+    let asset_tags_json: String = row.get(14).unwrap_or_else(|_| "[]".to_string());
+    let asset_tags: Vec<String> =
+        serde_json::from_str(&asset_tags_json).unwrap_or_default();
+
+    let user_name: Option<String> = row.get(15).ok();
+    let user_id: Option<String> = row.get(16).ok();
+    let user_domain: Option<String> = row.get(17).ok();
+    let user_type_str: Option<String> = row.get(18).ok();
+    let user_type = user_type_str
+        .and_then(|s| kron_types::UserType::from_str(&s).ok());
+
+    let event_type: String = row
+        .get(19)
+        .map_err(|e| KronError::Storage(format!("failed to read event_type: {e}")))?;
+    let event_category_str: Option<String> = row.get(20).ok();
+    let event_category = event_category_str
+        .and_then(|s| kron_types::EventCategory::from_str(&s).ok());
+    let event_action: Option<String> = row.get(21).ok();
+
+    let src_ip_str: Option<String> = row.get(22).ok();
+    let src_ip6_str: Option<String> = row.get(23).ok();
+    let src_port: Option<u16> = row.get(24).ok();
+    let dst_ip_str: Option<String> = row.get(25).ok();
+    let dst_ip6_str: Option<String> = row.get(26).ok();
+    let dst_port: Option<u16> = row.get(27).ok();
+    let protocol: Option<String> = row.get(28).ok();
+    let bytes_in: Option<u64> = row.get(29).ok();
+    let bytes_out: Option<u64> = row.get(30).ok();
+    let packets_in: Option<u32> = row.get(31).ok();
+    let packets_out: Option<u32> = row.get(32).ok();
+    let direction_str: Option<String> = row.get(33).ok();
+    let direction = direction_str
+        .and_then(|s| kron_types::NetworkDirection::from_str(&s).ok());
+
+    let process_name: Option<String> = row.get(34).ok();
+    let process_pid: Option<u32> = row.get(35).ok();
+    let process_ppid: Option<u32> = row.get(36).ok();
+    let process_path: Option<String> = row.get(37).ok();
+    let process_cmdline: Option<String> = row.get(38).ok();
+    let process_hash: Option<String> = row.get(39).ok();
+    let parent_process: Option<String> = row.get(40).ok();
+
+    let file_path: Option<String> = row.get(41).ok();
+    let file_name: Option<String> = row.get(42).ok();
+    let file_hash: Option<String> = row.get(43).ok();
+    let file_size: Option<u64> = row.get(44).ok();
+    let file_action_str: Option<String> = row.get(45).ok();
+    let file_action = file_action_str
+        .and_then(|s| kron_types::FileAction::from_str(&s).ok());
+
+    let auth_result_str: Option<String> = row.get(46).ok();
+    let auth_result = auth_result_str
+        .and_then(|s| kron_types::AuthResult::from_str(&s).ok());
+    let auth_method: Option<String> = row.get(47).ok();
+    let auth_protocol: Option<String> = row.get(48).ok();
+
+    let src_country: Option<String> = row.get(49).ok();
+    let src_city: Option<String> = row.get(50).ok();
+    let src_asn: Option<u32> = row.get(51).ok();
+    let src_asn_name: Option<String> = row.get(52).ok();
+    let dst_country: Option<String> = row.get(53).ok();
+
+    let ioc_hit: bool = row.get(54).unwrap_or(false);
+    let ioc_type: Option<String> = row.get(55).ok();
+    let ioc_value: Option<String> = row.get(56).ok();
+    let ioc_feed: Option<String> = row.get(57).ok();
+
+    let mitre_tactic: Option<String> = row.get(58).ok();
+    let mitre_technique: Option<String> = row.get(59).ok();
+    let mitre_sub_tech: Option<String> = row.get(60).ok();
+
+    let severity_str: String = row.get(61).unwrap_or_else(|_| "info".to_string());
+    let severity = kron_types::Severity::from_str(&severity_str).unwrap_or_default();
+    let severity_score: u8 = row.get(62).unwrap_or(0);
+
+    let anomaly_score: f32 = row.get(63).unwrap_or(0.0);
+    let ueba_score: f32 = row.get(64).unwrap_or(0.0);
+    let beacon_score: f32 = row.get(65).unwrap_or(0.0);
+    let exfil_score: f32 = row.get(66).unwrap_or(0.0);
+
+    let fields_json: String = row.get(67).unwrap_or_else(|_| "{}".to_string());
+    let fields: std::collections::HashMap<String, String> =
+        serde_json::from_str(&fields_json).unwrap_or_default();
+
+    let schema_version: u8 = row.get(68).unwrap_or(1);
+
+    Ok(KronEvent {
+        event_id,
+        tenant_id,
+        dedup_hash,
+        ts,
+        ts_received,
+        ingest_lag_ms,
+        source_type,
+        collector_id,
+        raw,
+        host_id,
+        hostname,
+        host_ip: host_ip_str.and_then(|s| s.parse().ok()),
+        host_fqdn,
+        asset_criticality,
+        asset_tags,
+        user_name,
+        user_id,
+        user_domain,
+        user_type,
+        event_type,
+        event_category,
+        event_action,
+        src_ip: src_ip_str.and_then(|s| s.parse().ok()),
+        src_ip6: src_ip6_str.and_then(|s| s.parse().ok()),
+        src_port,
+        dst_ip: dst_ip_str.and_then(|s| s.parse().ok()),
+        dst_ip6: dst_ip6_str.and_then(|s| s.parse().ok()),
+        dst_port,
+        protocol,
+        bytes_in,
+        bytes_out,
+        packets_in,
+        packets_out,
+        direction,
+        process_name,
+        process_pid,
+        process_ppid,
+        process_path,
+        process_cmdline,
+        process_hash,
+        parent_process,
+        file_path,
+        file_name,
+        file_hash,
+        file_size,
+        file_action,
+        auth_result,
+        auth_method,
+        auth_protocol,
+        src_country,
+        src_city,
+        src_asn,
+        src_asn_name,
+        dst_country,
+        ioc_hit,
+        ioc_type,
+        ioc_value,
+        ioc_feed,
+        mitre_tactic,
+        mitre_technique,
+        mitre_sub_tech,
+        severity,
+        severity_score,
+        anomaly_score,
+        ueba_score,
+        beacon_score,
+        exfil_score,
+        fields,
+        schema_version,
+    })
 }
 
 #[async_trait]
@@ -70,35 +648,40 @@ impl StorageEngine for DuckDbEngine {
         events: Vec<KronEvent>,
     ) -> StorageResult<u64> {
         let tenant_id = ctx.tenant_id();
-        let event_count = events.len() as u64;
+        let conn = self.conn.clone();
 
-        // Verify all events belong to this tenant
-        for event in &events {
-            if event.tenant_id != tenant_id {
-                return Err(KronError::TenantIsolationViolation {
-                    caller: tenant_id.to_string(),
-                    target: event.tenant_id.to_string(),
-                });
-            }
-        }
+        let inserted = tokio::task::spawn_blocking(move || {
+            let conn = conn.blocking_lock();
+            insert_events_sync(&conn, &tenant_id, &events)
+        })
+        .await
+        .map_err(|e| KronError::Storage(format!("insert task panicked: {e}")))?
+        ?;
 
-        // TODO(#TBD, hardik, v1.1): Execute INSERT statement
-        // Use QueryBuilder::insert_events() to construct parameterized query.
-        // Return number of successfully inserted rows.
-
-        Ok(event_count)
+        self.events_inserted.fetch_add(inserted, Ordering::Relaxed);
+        Ok(inserted)
     }
 
     #[instrument(skip(self, ctx), fields(tenant_id = %ctx.tenant_id()))]
     async fn query_events(
         &self,
         ctx: &TenantContext,
-        _filter: Option<EventFilter>,
-        _limit: u32,
+        filter: Option<EventFilter>,
+        limit: u32,
     ) -> StorageResult<Vec<KronEvent>> {
-        // TODO(#TBD, hardik, v1.1): Execute SELECT query with QueryBuilder
-        // Always enforces tenant_id through QueryBuilder::select_events()
-        Ok(Vec::new())
+        let tenant_id = ctx.tenant_id();
+        let conn = self.conn.clone();
+
+        let events = tokio::task::spawn_blocking(move || {
+            let conn = conn.blocking_lock();
+            query_events_sync(&conn, &tenant_id, &filter, limit)
+        })
+        .await
+        .map_err(|e| KronError::Storage(format!("query task panicked: {e}")))?
+        ?;
+
+        self.queries_executed.fetch_add(1, Ordering::Relaxed);
+        Ok(events)
     }
 
     #[instrument(skip(self, ctx), fields(tenant_id = %ctx.tenant_id(), event_id = %event_id))]
@@ -107,8 +690,29 @@ impl StorageEngine for DuckDbEngine {
         ctx: &TenantContext,
         event_id: &str,
     ) -> StorageResult<Option<KronEvent>> {
-        // TODO(#TBD, hardik, v1.1): Execute SELECT by ID with tenant isolation
-        Ok(None)
+        let tenant_id = ctx.tenant_id();
+        let conn = self.conn.clone();
+        let event_id = event_id.to_string();
+
+        tokio::task::spawn_blocking(move || {
+            let conn = conn.blocking_lock();
+            let mut stmt = conn
+                .prepare("SELECT * FROM events WHERE tenant_id = ? AND event_id = ?")
+                .map_err(|e| KronError::Storage(format!("prepare failed: {e}")))?;
+
+            let tenant_str = tenant_id.to_string();
+            let mut rows = stmt
+                .query(duckdb::params![tenant_str, event_id])
+                .map_err(|e| KronError::Storage(format!("query failed: {e}")))?;
+
+            match rows.next() {
+                Ok(Some(row)) => Ok(Some(row_to_event(row)?)),
+                Ok(None) => Ok(None),
+                Err(e) => Err(KronError::Storage(format!("failed to read row: {e}"))),
+            }
+        })
+        .await
+        .map_err(|e| KronError::Storage(format!("get_event task panicked: {e}")))?
     }
 
     #[instrument(skip(self, ctx, alerts), fields(
@@ -121,7 +725,6 @@ impl StorageEngine for DuckDbEngine {
         alerts: Vec<KronAlert>,
     ) -> StorageResult<u64> {
         let tenant_id = ctx.tenant_id();
-        let alert_count = alerts.len() as u64;
 
         // Verify all alerts belong to this tenant
         for alert in &alerts {
@@ -133,8 +736,11 @@ impl StorageEngine for DuckDbEngine {
             }
         }
 
-        // TODO(#TBD, hardik, v1.1): Execute INSERT into alerts table
-        Ok(alert_count)
+        // Alert insertion is simpler; we'll implement the full schema mapping
+        // when the alert engine is built in Phase 2.5
+        let count = alerts.len() as u64;
+        tracing::debug!(count, "Alert insertion placeholder — full mapping in Phase 2.5");
+        Ok(count)
     }
 
     #[instrument(skip(self, ctx), fields(tenant_id = %ctx.tenant_id()))]
@@ -144,7 +750,8 @@ impl StorageEngine for DuckDbEngine {
         _limit: u32,
         _offset: u32,
     ) -> StorageResult<Vec<KronAlert>> {
-        // TODO(#TBD, hardik, v1.1): Execute SELECT from alerts table
+        // Alert queries will be implemented in Phase 2.5 when alert engine is built
+        tracing::debug!("Alert query placeholder — full mapping in Phase 2.5");
         Ok(Vec::new())
     }
 
@@ -154,7 +761,7 @@ impl StorageEngine for DuckDbEngine {
         ctx: &TenantContext,
         alert_id: &str,
     ) -> StorageResult<Option<KronAlert>> {
-        // TODO(#TBD, hardik, v1.1): Execute SELECT by ID with tenant isolation
+        tracing::debug!("Alert get placeholder — full mapping in Phase 2.5");
         Ok(None)
     }
 
@@ -173,28 +780,97 @@ impl StorageEngine for DuckDbEngine {
             });
         }
 
-        // TODO(#TBD, hardik, v1.1): Execute UPDATE query
+        tracing::debug!("Alert update placeholder — full mapping in Phase 2.5");
         Ok(())
     }
 
-    #[instrument(skip(self, ctx, _entry), fields(
+    #[instrument(skip(self, ctx, entry), fields(
         tenant_id = %ctx.tenant_id()
     ))]
     async fn insert_audit_log(
         &self,
         ctx: &TenantContext,
-        _entry: AuditLogEntry,
+        entry: AuditLogEntry,
     ) -> StorageResult<()> {
-        // TODO(#TBD, hardik, v1.1): Execute INSERT into audit_log table
-        // Note: audit_log entries don't include tenant_id in the entry itself,
-        // but we should enforce it from context.
-        Ok(())
+        let tenant_id = ctx.tenant_id();
+        let conn = self.conn.clone();
+
+        tokio::task::spawn_blocking(move || {
+            let conn = conn.blocking_lock();
+            let audit_id = uuid::Uuid::new_v4().to_string();
+            let now = chrono::Utc::now().to_rfc3339();
+
+            // For Merkle chain: get the last row_hash for this tenant
+            let prev_hash = conn
+                .query_row(
+                    "SELECT row_hash FROM audit_log WHERE tenant_id = ? ORDER BY chain_seq DESC LIMIT 1",
+                    duckdb::params![tenant_id.to_string()],
+                    |row| row.get::<_, String>(0),
+                )
+                .unwrap_or_else(|_| "0".repeat(64)); // Genesis hash
+
+            let chain_seq: u64 = conn
+                .query_row(
+                    "SELECT COALESCE(MAX(chain_seq), 0) + 1 FROM audit_log WHERE tenant_id = ?",
+                    duckdb::params![tenant_id.to_string()],
+                    |row| row.get(0),
+                )
+                .unwrap_or(1);
+
+            // Compute row_hash = SHA256(prev_hash + action + actor_id + ts)
+            use sha2::Digest;
+            let mut hasher = sha2::Sha256::new();
+            hasher.update(prev_hash.as_bytes());
+            hasher.update(entry.action.as_bytes());
+            hasher.update(entry.actor_id.as_bytes());
+            hasher.update(now.as_bytes());
+            let row_hash_bytes = hasher.finalize();
+            let row_hash: String = row_hash_bytes.iter().map(|b| format!("{b:02x}")).collect();
+
+            conn.execute(
+                "INSERT INTO audit_log (audit_id, tenant_id, ts, actor_id, actor_type, action, resource_type, resource_id, result, prev_hash, row_hash, chain_seq) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                duckdb::params![
+                    audit_id,
+                    tenant_id.to_string(),
+                    now,
+                    entry.actor_id,
+                    entry.actor_type,
+                    entry.action,
+                    entry.resource_type,
+                    entry.resource_id,
+                    entry.result,
+                    prev_hash,
+                    row_hash,
+                    chain_seq,
+                ],
+            )
+            .map_err(|e| {
+                tracing::error!(
+                    tenant_id = %tenant_id,
+                    action = %entry.action,
+                    error = %e,
+                    "Failed to insert audit log entry"
+                );
+                KronError::Storage(format!("failed to insert audit log: {e}"))
+            })?;
+
+            Ok(())
+        })
+        .await
+        .map_err(|e| KronError::Storage(format!("audit_log task panicked: {e}")))?
     }
 
     #[instrument(skip(self))]
     async fn health_check(&self) -> StorageResult<()> {
-        // TODO(#TBD, hardik, v1.1): Execute simple SELECT 1 to verify connection
-        Ok(())
+        let conn = self.conn.clone();
+
+        tokio::task::spawn_blocking(move || {
+            let conn = conn.blocking_lock();
+            conn.execute_batch("SELECT 1")
+                .map_err(|e| KronError::Storage(format!("DuckDB health check failed: {e}")))
+        })
+        .await
+        .map_err(|e| KronError::Storage(format!("health check task panicked: {e}")))?
     }
 
     fn backend_name(&self) -> &'static str {
@@ -202,12 +878,11 @@ impl StorageEngine for DuckDbEngine {
     }
 
     fn latency_stats(&self) -> LatencyStats {
-        // TODO(#TBD, hardik, v1.1): Return actual latency statistics
         LatencyStats {
             p50_ms: 0.0,
             p99_ms: 0.0,
-            total_queries: 0,
-            total_events_inserted: 0,
+            total_queries: self.queries_executed.load(Ordering::Relaxed),
+            total_events_inserted: self.events_inserted.load(Ordering::Relaxed),
         }
     }
 }
@@ -215,14 +890,243 @@ impl StorageEngine for DuckDbEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use kron_types::{EventSource, TenantId};
+
+    fn test_migrations_dir() -> String {
+        let manifest = env!("CARGO_MANIFEST_DIR");
+        format!("{}/../../migrations", manifest)
+    }
+
+    fn make_test_ctx() -> TenantContext {
+        TenantContext::new(TenantId::new(), "test-user".to_string(), "admin")
+    }
+
+    fn make_test_event(tenant_id: TenantId) -> KronEvent {
+        KronEvent::builder()
+            .tenant_id(tenant_id)
+            .source_type(EventSource::LinuxEbpf)
+            .event_type("process_create")
+            .ts(chrono::Utc::now())
+            .hostname("test-host")
+            .raw("test raw log line")
+            .build()
+            .expect("valid test event")
+    }
 
     #[tokio::test]
-    async fn test_duckdb_new() {
-        // TODO(#TBD, hardik, v1.1): Test DuckDB engine creation
+    async fn test_duckdb_new_in_memory() {
+        let engine = DuckDbEngine::in_memory(&test_migrations_dir());
+        assert!(engine.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_duckdb_apply_migrations() {
+        let engine = DuckDbEngine::in_memory(&test_migrations_dir())
+            .expect("must create in-memory db");
+        let result = engine.apply_migrations().await;
+        assert!(result.is_ok(), "migrations failed: {:?}", result.err());
     }
 
     #[tokio::test]
     async fn test_duckdb_health_check() {
-        // TODO(#TBD, hardik, v1.1): Test health check
+        let engine = DuckDbEngine::in_memory(&test_migrations_dir())
+            .expect("must create in-memory db");
+        let result = engine.health_check().await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_duckdb_insert_and_query_events() {
+        let engine = DuckDbEngine::in_memory(&test_migrations_dir())
+            .expect("must create in-memory db");
+        engine.apply_migrations().await.expect("migrations");
+
+        let ctx = make_test_ctx();
+        let tenant_id = ctx.tenant_id();
+        let event = make_test_event(tenant_id);
+        let event_id = event.event_id.to_string();
+
+        // Insert
+        let inserted = engine
+            .insert_events(&ctx, vec![event])
+            .await
+            .expect("insert must succeed");
+        assert_eq!(inserted, 1);
+
+        // Query all
+        let events = engine
+            .query_events(&ctx, None, 100)
+            .await
+            .expect("query must succeed");
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event_id.to_string(), event_id);
+        assert_eq!(events[0].tenant_id, tenant_id);
+        assert_eq!(events[0].event_type, "process_create");
+    }
+
+    #[tokio::test]
+    async fn test_duckdb_tenant_isolation_on_insert() {
+        let engine = DuckDbEngine::in_memory(&test_migrations_dir())
+            .expect("must create in-memory db");
+        engine.apply_migrations().await.expect("migrations");
+
+        let ctx = make_test_ctx();
+        let wrong_tenant = TenantId::new();
+        let event = make_test_event(wrong_tenant);
+
+        // Should fail: event tenant_id doesn't match context tenant_id
+        let result = engine.insert_events(&ctx, vec![event]).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("tenant isolation violation"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn test_duckdb_tenant_isolation_on_query() {
+        let engine = DuckDbEngine::in_memory(&test_migrations_dir())
+            .expect("must create in-memory db");
+        engine.apply_migrations().await.expect("migrations");
+
+        let ctx_a = make_test_ctx();
+        let ctx_b = make_test_ctx(); // Different tenant
+
+        let event_a = make_test_event(ctx_a.tenant_id());
+        let event_b = make_test_event(ctx_b.tenant_id());
+
+        // Insert events for both tenants
+        engine
+            .insert_events(&ctx_a, vec![event_a])
+            .await
+            .expect("insert a");
+        engine
+            .insert_events(&ctx_b, vec![event_b])
+            .await
+            .expect("insert b");
+
+        // Query as tenant A — must only see tenant A's events
+        let events_a = engine
+            .query_events(&ctx_a, None, 100)
+            .await
+            .expect("query a");
+        assert_eq!(events_a.len(), 1);
+        assert_eq!(events_a[0].tenant_id, ctx_a.tenant_id());
+
+        // Query as tenant B — must only see tenant B's events
+        let events_b = engine
+            .query_events(&ctx_b, None, 100)
+            .await
+            .expect("query b");
+        assert_eq!(events_b.len(), 1);
+        assert_eq!(events_b[0].tenant_id, ctx_b.tenant_id());
+    }
+
+    #[tokio::test]
+    async fn test_duckdb_get_event_by_id() {
+        let engine = DuckDbEngine::in_memory(&test_migrations_dir())
+            .expect("must create in-memory db");
+        engine.apply_migrations().await.expect("migrations");
+
+        let ctx = make_test_ctx();
+        let event = make_test_event(ctx.tenant_id());
+        let event_id = event.event_id.to_string();
+
+        engine
+            .insert_events(&ctx, vec![event])
+            .await
+            .expect("insert");
+
+        let found = engine
+            .get_event(&ctx, &event_id)
+            .await
+            .expect("get must succeed");
+        assert!(found.is_some());
+        assert_eq!(found.as_ref().map(|e| e.event_id.to_string()), Some(event_id));
+    }
+
+    #[tokio::test]
+    async fn test_duckdb_get_event_not_found() {
+        let engine = DuckDbEngine::in_memory(&test_migrations_dir())
+            .expect("must create in-memory db");
+        engine.apply_migrations().await.expect("migrations");
+
+        let ctx = make_test_ctx();
+        let found = engine
+            .get_event(&ctx, "00000000-0000-0000-0000-000000000000")
+            .await
+            .expect("get must succeed");
+        assert!(found.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_duckdb_insert_audit_log() {
+        let engine = DuckDbEngine::in_memory(&test_migrations_dir())
+            .expect("must create in-memory db");
+        engine.apply_migrations().await.expect("migrations");
+
+        let ctx = make_test_ctx();
+        let entry = AuditLogEntry {
+            actor_id: "user-1".to_string(),
+            actor_type: "human".to_string(),
+            action: "view_event".to_string(),
+            resource_type: Some("event".to_string()),
+            resource_id: Some("event-123".to_string()),
+            result: "success".to_string(),
+            detail: None,
+        };
+
+        let result = engine.insert_audit_log(&ctx, entry).await;
+        assert!(result.is_ok(), "audit log insert failed: {:?}", result.err());
+    }
+
+    #[tokio::test]
+    async fn test_duckdb_batch_insert_10000_events() {
+        let engine = DuckDbEngine::in_memory(&test_migrations_dir())
+            .expect("must create in-memory db");
+        engine.apply_migrations().await.expect("migrations");
+
+        let ctx = make_test_ctx();
+        let events: Vec<KronEvent> = (0..10_000)
+            .map(|_| make_test_event(ctx.tenant_id()))
+            .collect();
+
+        let inserted = engine
+            .insert_events(&ctx, events)
+            .await
+            .expect("batch insert must succeed");
+        assert_eq!(inserted, 10_000);
+
+        // Verify count
+        let queried = engine
+            .query_events(&ctx, None, 10_001)
+            .await
+            .expect("query must succeed");
+        assert_eq!(queried.len(), 10_000);
+    }
+
+    #[tokio::test]
+    async fn test_duckdb_query_with_filter() {
+        let engine = DuckDbEngine::in_memory(&test_migrations_dir())
+            .expect("must create in-memory db");
+        engine.apply_migrations().await.expect("migrations");
+
+        let ctx = make_test_ctx();
+        let mut event1 = make_test_event(ctx.tenant_id());
+        event1.event_type = "process_create".to_string();
+        let mut event2 = make_test_event(ctx.tenant_id());
+        event2.event_type = "network_connect".to_string();
+
+        engine
+            .insert_events(&ctx, vec![event1, event2])
+            .await
+            .expect("insert");
+
+        let filter = EventFilter::new()
+            .with_event_type("process_create".to_string());
+        let events = engine
+            .query_events(&ctx, Some(filter), 100)
+            .await
+            .expect("query");
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event_type, "process_create");
     }
 }

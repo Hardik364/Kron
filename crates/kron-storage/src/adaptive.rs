@@ -12,6 +12,7 @@ use crate::traits::{AuditLogEntry, LatencyStats, StorageEngine, StorageResult};
 use async_trait::async_trait;
 use kron_types::{DeploymentMode, KronAlert, KronConfig, KronEvent, TenantContext};
 use tracing::info;
+use kron_types::KronError;
 
 /// Enum of supported storage backends.
 #[derive(Clone)]
@@ -50,30 +51,27 @@ impl AdaptiveStorage {
         let backend = match config.mode {
             DeploymentMode::Nano => {
                 info!("Initializing Nano tier storage (DuckDB)");
-                let path = config.duckdb.path.to_string_lossy();
-                let engine = DuckDbEngine::new(&path).await?;
+                let db_path = config.duckdb.path.to_string_lossy();
+                let migrations_dir = config.duckdb.migrations_dir.to_string_lossy();
+                let engine = DuckDbEngine::new(&db_path, &migrations_dir)
+                    .map_err(|e| KronError::Storage(format!("DuckDB init failed: {e}")))?;
                 engine.apply_migrations().await?;
                 BackendEnum::DuckDb(std::sync::Arc::new(engine))
             }
             DeploymentMode::Standard => {
                 info!("Initializing Standard tier storage (ClickHouse)");
-                let engine = ClickHouseEngine::new(
-                    &config.clickhouse.url,
-                    &config.clickhouse.database,
-                )
-                .await?;
+                let migrations_dir = config.clickhouse.migrations_dir.to_string_lossy();
+                let engine =
+                    ClickHouseEngine::new(&config.clickhouse, &migrations_dir).await?;
                 engine.apply_migrations().await?;
                 BackendEnum::ClickHouse(std::sync::Arc::new(engine))
             }
             DeploymentMode::Enterprise => {
                 info!("Initializing Enterprise tier storage (ClickHouse sharded)");
-                // Enterprise is the same as Standard for now;
-                // sharding is handled at the ClickHouse cluster level
-                let engine = ClickHouseEngine::new(
-                    &config.clickhouse.url,
-                    &config.clickhouse.database,
-                )
-                .await?;
+                // Sharding is handled at the ClickHouse cluster level.
+                let migrations_dir = config.clickhouse.migrations_dir.to_string_lossy();
+                let engine =
+                    ClickHouseEngine::new(&config.clickhouse, &migrations_dir).await?;
                 engine.apply_migrations().await?;
                 BackendEnum::ClickHouse(std::sync::Arc::new(engine))
             }

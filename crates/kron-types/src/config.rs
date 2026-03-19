@@ -110,6 +110,12 @@ pub struct ClickHouseConfig {
     pub query_timeout_secs: u64,
     /// Insert batch timeout in seconds.
     pub insert_timeout_secs: u64,
+    /// Path to the directory containing SQL migration files.
+    pub migrations_dir: PathBuf,
+    /// Number of consecutive failures before the circuit breaker opens.
+    pub circuit_breaker_threshold: u32,
+    /// Seconds after the last failure before the circuit breaker allows a test request.
+    pub circuit_breaker_recovery_secs: u64,
 }
 
 impl ClickHouseConfig {
@@ -136,6 +142,9 @@ impl Default for ClickHouseConfig {
             max_connections: 10,
             query_timeout_secs: 30,
             insert_timeout_secs: 10,
+            migrations_dir: PathBuf::from("/etc/kron/migrations"),
+            circuit_breaker_threshold: 5,
+            circuit_breaker_recovery_secs: 60,
         }
     }
 }
@@ -149,6 +158,8 @@ pub struct DuckDbConfig {
     pub memory_limit_mb: u32,
     /// Number of CPU threads for analytical queries.
     pub threads: u32,
+    /// Path to the directory containing SQL migration files.
+    pub migrations_dir: PathBuf,
 }
 
 impl Default for DuckDbConfig {
@@ -157,6 +168,7 @@ impl Default for DuckDbConfig {
             path: PathBuf::from("/var/lib/kron/data/events.duckdb"),
             memory_limit_mb: 2048,
             threads: 4,
+            migrations_dir: PathBuf::from("/etc/kron/migrations"),
         }
     }
 }

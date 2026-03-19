@@ -35,6 +35,7 @@
 pub mod adaptive;
 pub mod clickhouse;
 pub mod duckdb;
+pub mod migration;
 pub mod query;
 pub mod traits;
 

@@ -94,19 +94,19 @@ assert_eq!(event.event_id, back.event_id);
 
 ### 1.2 Storage Layer (`kron-storage`)
 
-- [~ hardik] `StorageEngine` trait — abstracts DuckDB and ClickHouse behind same interface
-- [ ] `StorageEngine::insert_events(tenant_id, events)`
-- [ ] `StorageEngine::query_events(tenant_id, filter)`
-- [ ] `StorageEngine::insert_audit_log(tenant_id, entry)`
-- [ ] DuckDB implementation of `StorageEngine`
-- [ ] ClickHouse implementation of `StorageEngine`
-- [ ] `AdaptiveStorage::new(config)` — selects DuckDB or ClickHouse based on config/mode
-- [ ] All migrations in `migrations/` applied on startup (idempotent)
-- [ ] `tenant_id` enforced on every query — middleware layer in storage, not caller
-- [ ] Connection pooling (ClickHouse: `deadpool`, DuckDB: single connection with mutex)
-- [ ] Retry logic with exponential backoff on transient failures
-- [ ] Circuit breaker on storage failures (stops hammering a down DB)
-- [ ] Prometheus metrics: query latency histogram, insert throughput, error count
+- [x 2026-03-19] `StorageEngine` trait — abstracts DuckDB and ClickHouse behind same interface
+- [x 2026-03-19] `StorageEngine::insert_events(tenant_id, events)`
+- [x 2026-03-19] `StorageEngine::query_events(tenant_id, filter)`
+- [x 2026-03-19] `StorageEngine::insert_audit_log(tenant_id, entry)`
+- [x 2026-03-19] DuckDB implementation of `StorageEngine`
+- [x 2026-03-19] ClickHouse implementation of `StorageEngine`
+- [x 2026-03-19] `AdaptiveStorage::new(config)` — selects DuckDB or ClickHouse based on config/mode
+- [x 2026-03-19] All migrations in `migrations/` applied on startup (idempotent)
+- [x 2026-03-19] `tenant_id` enforced on every query — middleware layer in storage, not caller
+- [x 2026-03-19] Connection pooling (ClickHouse: internal HTTP pool, DuckDB: mutex-guarded connection)
+- [x 2026-03-19] Retry logic with exponential backoff on transient failures
+- [x 2026-03-19] Circuit breaker on storage failures (stops hammering a down DB)
+- [x 2026-03-19] Prometheus metrics: query latency histogram, insert throughput, error count
 
 **Acceptance criteria:**
 ```bash

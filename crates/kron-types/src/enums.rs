@@ -5,8 +5,26 @@
 //! column values in the database schema.
 
 use std::fmt;
+use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
+
+/// Error returned when parsing an enum from a string fails.
+#[derive(Debug, Clone)]
+pub struct EnumParseError {
+    /// The value that could not be parsed.
+    pub value: String,
+    /// The enum type name.
+    pub enum_name: &'static str,
+}
+
+impl fmt::Display for EnumParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "unknown {} value: '{}'", self.enum_name, self.value)
+    }
+}
+
+impl std::error::Error for EnumParseError {}
 
 /// Event severity level.
 ///
@@ -74,6 +92,20 @@ impl fmt::Display for Severity {
     }
 }
 
+impl FromStr for Severity {
+    type Err = EnumParseError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "info" => Ok(Self::Info),
+            "low" => Ok(Self::Low),
+            "medium" => Ok(Self::Medium),
+            "high" => Ok(Self::High),
+            "critical" => Ok(Self::Critical),
+            _ => Err(EnumParseError { value: s.to_string(), enum_name: "Severity" }),
+        }
+    }
+}
+
 /// The source system or collection method that produced the event.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -124,6 +156,27 @@ impl fmt::Display for EventSource {
     }
 }
 
+impl FromStr for EventSource {
+    type Err = EnumParseError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "linux_ebpf" => Ok(Self::LinuxEbpf),
+            "windows_etw" => Ok(Self::WindowsEtw),
+            "syslog" => Ok(Self::Syslog),
+            "cloudtrail" => Ok(Self::Cloudtrail),
+            "azure_activity_log" => Ok(Self::AzureActivityLog),
+            "gcp_audit_log" => Ok(Self::GcpAuditLog),
+            "http_intake" => Ok(Self::HttpIntake),
+            "ot_scada" => Ok(Self::OtScada),
+            "network_flow" => Ok(Self::NetworkFlow),
+            "dhcp" => Ok(Self::Dhcp),
+            "dns" => Ok(Self::Dns),
+            "unknown" => Ok(Self::Unknown),
+            _ => Err(EnumParseError { value: s.to_string(), enum_name: "EventSource" }),
+        }
+    }
+}
+
 /// High-level OCSF-aligned category of the security event.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
@@ -158,6 +211,23 @@ impl fmt::Display for EventCategory {
             Self::Account => write!(f, "account"),
             Self::Cloud => write!(f, "cloud"),
             Self::Other => write!(f, "other"),
+        }
+    }
+}
+
+impl FromStr for EventCategory {
+    type Err = EnumParseError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "authentication" => Ok(Self::Authentication),
+            "network" => Ok(Self::Network),
+            "file" => Ok(Self::File),
+            "process" => Ok(Self::Process),
+            "registry" => Ok(Self::Registry),
+            "account" => Ok(Self::Account),
+            "cloud" => Ok(Self::Cloud),
+            "other" => Ok(Self::Other),
+            _ => Err(EnumParseError { value: s.to_string(), enum_name: "EventCategory" }),
         }
     }
 }
@@ -210,6 +280,20 @@ impl fmt::Display for AssetCriticality {
     }
 }
 
+impl FromStr for AssetCriticality {
+    type Err = EnumParseError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "critical" => Ok(Self::Critical),
+            "high" => Ok(Self::High),
+            "medium" => Ok(Self::Medium),
+            "low" => Ok(Self::Low),
+            "unknown" => Ok(Self::Unknown),
+            _ => Err(EnumParseError { value: s.to_string(), enum_name: "AssetCriticality" }),
+        }
+    }
+}
+
 /// Type of user account that performed an action.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
@@ -229,6 +313,18 @@ impl fmt::Display for UserType {
             Self::Human => write!(f, "human"),
             Self::Service => write!(f, "service"),
             Self::System => write!(f, "system"),
+        }
+    }
+}
+
+impl FromStr for UserType {
+    type Err = EnumParseError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "human" => Ok(Self::Human),
+            "service" => Ok(Self::Service),
+            "system" => Ok(Self::System),
+            _ => Err(EnumParseError { value: s.to_string(), enum_name: "UserType" }),
         }
     }
 }
@@ -256,6 +352,18 @@ impl fmt::Display for AuthResult {
     }
 }
 
+impl FromStr for AuthResult {
+    type Err = EnumParseError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "success" => Ok(Self::Success),
+            "failure" => Ok(Self::Failure),
+            "unknown" => Ok(Self::Unknown),
+            _ => Err(EnumParseError { value: s.to_string(), enum_name: "AuthResult" }),
+        }
+    }
+}
+
 /// Network traffic direction relative to the monitored asset.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
@@ -275,6 +383,18 @@ impl fmt::Display for NetworkDirection {
             Self::Inbound => write!(f, "inbound"),
             Self::Outbound => write!(f, "outbound"),
             Self::Lateral => write!(f, "lateral"),
+        }
+    }
+}
+
+impl FromStr for NetworkDirection {
+    type Err = EnumParseError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "inbound" => Ok(Self::Inbound),
+            "outbound" => Ok(Self::Outbound),
+            "lateral" => Ok(Self::Lateral),
+            _ => Err(EnumParseError { value: s.to_string(), enum_name: "NetworkDirection" }),
         }
     }
 }
@@ -304,6 +424,20 @@ impl fmt::Display for FileAction {
             Self::Create => write!(f, "create"),
             Self::Delete => write!(f, "delete"),
             Self::Rename => write!(f, "rename"),
+        }
+    }
+}
+
+impl FromStr for FileAction {
+    type Err = EnumParseError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "read" => Ok(Self::Read),
+            "write" => Ok(Self::Write),
+            "create" => Ok(Self::Create),
+            "delete" => Ok(Self::Delete),
+            "rename" => Ok(Self::Rename),
+            _ => Err(EnumParseError { value: s.to_string(), enum_name: "FileAction" }),
         }
     }
 }

@@ -76,7 +76,11 @@ ndarray = "0.15"
 
 # Utilities
 uuid = { version = "1", features = ["v4", "serde"] }
-chrono = { version = "0.4", features = ["serde"] }
+# Pin <0.4.38: chrono 0.4.38 added Datelike::quarter() which conflicts with
+# arrow-arith v51's ChronoDateExt::quarter() (E0034). Unpin when duckdb is
+# upgraded past 0.10.
+# TODO(#1, hardik, v1.1): Remove chrono upper bound when duckdb is upgraded
+chrono = { version = ">=0.4, <0.4.38", features = ["serde"] }
 regex = "1"
 serde_yaml = "0.9"
 toml = "0.8"
@@ -88,7 +92,7 @@ dashmap = "5"
 
 # Testing
 testcontainers = "0.15"
-testcontainers-modules = { version = "0.3", features = ["clickhouse"] }
+testcontainers-modules = { version = "0.3", features = ["postgres", "redis"] }
 
 [profile.release]
 opt-level = 3
