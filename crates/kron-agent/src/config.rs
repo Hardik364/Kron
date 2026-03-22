@@ -124,7 +124,8 @@ impl EbpfConfig {
     /// # Errors
     /// Returns [`AgentError::Config`] if the size is not a power of two.
     pub fn ring_buffer_size_bytes(&self) -> Result<u32, AgentError> {
-        let bytes = self.ring_buffer_size_mb
+        let bytes = self
+            .ring_buffer_size_mb
             .checked_mul(1024 * 1024)
             .ok_or_else(|| AgentError::Config("ring_buffer_size_mb overflows u32".to_owned()))?;
         if bytes == 0 || (bytes & (bytes - 1)) != 0 {
@@ -203,8 +204,9 @@ impl AgentConfig {
     pub fn from_file(path: &Path) -> Result<Self, AgentError> {
         let raw = std::fs::read_to_string(path)
             .map_err(|e| AgentError::Config(format!("cannot read {}: {e}", path.display())))?;
-        let cfg: Self = toml::from_str(&raw)
-            .map_err(|e| AgentError::Config(format!("TOML parse error in {}: {e}", path.display())))?;
+        let cfg: Self = toml::from_str(&raw).map_err(|e| {
+            AgentError::Config(format!("TOML parse error in {}: {e}", path.display()))
+        })?;
         cfg.validate()?;
         Ok(cfg)
     }
@@ -221,7 +223,9 @@ impl AgentConfig {
             return Err(AgentError::Config("tenant_id is required".to_owned()));
         }
         if self.collector_endpoint.is_empty() {
-            return Err(AgentError::Config("collector_endpoint is required".to_owned()));
+            return Err(AgentError::Config(
+                "collector_endpoint is required".to_owned(),
+            ));
         }
         if !self.cert_path.exists() {
             return Err(AgentError::Config(format!(

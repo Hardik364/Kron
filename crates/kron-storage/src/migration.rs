@@ -121,11 +121,7 @@ fn compute_checksum(sql: &str) -> String {
 mod hex {
     /// Encode bytes as lowercase hex string.
     pub fn encode(bytes: impl AsRef<[u8]>) -> String {
-        bytes
-            .as_ref()
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect()
+        bytes.as_ref().iter().map(|b| format!("{b:02x}")).collect()
     }
 }
 

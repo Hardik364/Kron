@@ -19,7 +19,7 @@ use kron_types::{AgentId, EventBatch, KronEvent, RegisterRequest, TenantId};
 use crate::buffer::DiskBuffer;
 use crate::config::AgentConfig;
 use crate::error::AgentError;
-use crate::heartbeat::{HeartbeatState, spawn_heartbeat_task};
+use crate::heartbeat::{spawn_heartbeat_task, HeartbeatState};
 use crate::metrics;
 use crate::shutdown::ShutdownHandle;
 use crate::transport::grpc::GrpcTransport;
@@ -293,9 +293,9 @@ impl Agent {
         if addr.is_empty() {
             return Ok(());
         }
-        let addr_parsed: std::net::SocketAddr = addr.parse().map_err(|e| {
-            AgentError::Config(format!("invalid metrics bind_addr '{addr}': {e}"))
-        })?;
+        let addr_parsed: std::net::SocketAddr = addr
+            .parse()
+            .map_err(|e| AgentError::Config(format!("invalid metrics bind_addr '{addr}': {e}")))?;
         metrics_exporter_prometheus::PrometheusBuilder::new()
             .with_http_listener(addr_parsed)
             .install()
@@ -354,8 +354,7 @@ async fn flush_batch<T: CollectorTransport>(
                 // Events were serialized into the gRPC frame and ownership transferred;
                 // we cannot recover them from the transport error. Log as dropped.
                 metrics::record_events_dropped(count as u64);
-                heartbeat_state.lock().await.events_dropped_since_last +=
-                    count as u64;
+                heartbeat_state.lock().await.events_dropped_since_last += count as u64;
                 return Ok(());
             }
         }
@@ -440,9 +439,13 @@ async fn run_event_converter(
             RawBpfEvent::ProcessCreate(ev) => {
                 process_create_to_kron_event(&ev, tenant_id, &collector_id, &hostname, boot_time_ns)
             }
-            RawBpfEvent::NetworkConnect(ev) => {
-                network_connect_to_kron_event(&ev, tenant_id, &collector_id, &hostname, boot_time_ns)
-            }
+            RawBpfEvent::NetworkConnect(ev) => network_connect_to_kron_event(
+                &ev,
+                tenant_id,
+                &collector_id,
+                &hostname,
+                boot_time_ns,
+            ),
             RawBpfEvent::FileAccess(ev) => {
                 file_access_to_kron_event(&ev, tenant_id, &collector_id, &hostname, boot_time_ns)
             }

@@ -6,8 +6,8 @@
 //! Arrays and maps are stored as JSON strings.
 
 use kron_types::{
-    AssetCriticality, AuthResult, EventCategory, EventId, EventSource, FileAction,
-    KronAlert, KronError, KronEvent, NetworkDirection, Severity, TenantId, UserType,
+    AssetCriticality, AuthResult, EventCategory, EventId, EventSource, FileAction, KronAlert,
+    KronError, KronEvent, NetworkDirection, Severity, TenantId, UserType,
 };
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
@@ -21,7 +21,7 @@ use crate::traits::StorageResult;
 pub struct SchemaVersionRow {
     pub version: i32,
     pub name: String,
-    pub applied_at: u32,  // DateTime (seconds since epoch)
+    pub applied_at: u32, // DateTime (seconds since epoch)
     pub checksum: String,
 }
 
@@ -217,13 +217,16 @@ pub fn ch_row_to_event(row: ChEventRow) -> StorageResult<KronEvent> {
 
     let ts = nanos_to_datetime(row.ts)
         .ok_or_else(|| KronError::Parse(format!("event ts {} out of range", row.ts)))?;
-    let ts_received = nanos_to_datetime(row.ts_received)
-        .ok_or_else(|| KronError::Parse(format!("event ts_received {} out of range", row.ts_received)))?;
+    let ts_received = nanos_to_datetime(row.ts_received).ok_or_else(|| {
+        KronError::Parse(format!(
+            "event ts_received {} out of range",
+            row.ts_received
+        ))
+    })?;
 
     let fields: std::collections::HashMap<String, String> =
         serde_json::from_str(&row.fields).unwrap_or_default();
-    let asset_tags: Vec<String> =
-        serde_json::from_str(&row.asset_tags).unwrap_or_default();
+    let asset_tags: Vec<String> = serde_json::from_str(&row.asset_tags).unwrap_or_default();
 
     Ok(KronEvent {
         event_id,
@@ -239,15 +242,19 @@ pub fn ch_row_to_event(row: ChEventRow) -> StorageResult<KronEvent> {
         hostname: row.hostname,
         host_ip: row.host_ip.as_deref().and_then(|s| s.parse().ok()),
         host_fqdn: row.host_fqdn,
-        asset_criticality: AssetCriticality::from_str(&row.asset_criticality)
-            .unwrap_or_default(),
+        asset_criticality: AssetCriticality::from_str(&row.asset_criticality).unwrap_or_default(),
         asset_tags,
         user_name: row.user_name,
         user_id: row.user_id,
         user_domain: row.user_domain,
-        user_type: row.user_type.as_deref().and_then(|s| UserType::from_str(s).ok()),
+        user_type: row
+            .user_type
+            .as_deref()
+            .and_then(|s| UserType::from_str(s).ok()),
         event_type: row.event_type,
-        event_category: row.event_category.as_deref()
+        event_category: row
+            .event_category
+            .as_deref()
             .and_then(|s| EventCategory::from_str(s).ok()),
         event_action: row.event_action,
         src_ip: row.src_ip.as_deref().and_then(|s| s.parse().ok()),
@@ -261,7 +268,9 @@ pub fn ch_row_to_event(row: ChEventRow) -> StorageResult<KronEvent> {
         bytes_out: row.bytes_out,
         packets_in: row.packets_in,
         packets_out: row.packets_out,
-        direction: row.direction.as_deref()
+        direction: row
+            .direction
+            .as_deref()
             .and_then(|s| NetworkDirection::from_str(s).ok()),
         process_name: row.process_name,
         process_pid: row.process_pid,
@@ -274,9 +283,13 @@ pub fn ch_row_to_event(row: ChEventRow) -> StorageResult<KronEvent> {
         file_name: row.file_name,
         file_hash: row.file_hash,
         file_size: row.file_size,
-        file_action: row.file_action.as_deref()
+        file_action: row
+            .file_action
+            .as_deref()
             .and_then(|s| FileAction::from_str(s).ok()),
-        auth_result: row.auth_result.as_deref()
+        auth_result: row
+            .auth_result
+            .as_deref()
             .and_then(|s| AuthResult::from_str(s).ok()),
         auth_method: row.auth_method,
         auth_protocol: row.auth_protocol,
@@ -385,9 +398,7 @@ pub struct ChAlertRow {
 /// # Errors
 /// Returns `KronError::Storage` if timestamp serialization fails.
 pub fn alert_to_ch_row(alert: &KronAlert) -> StorageResult<ChAlertRow> {
-    let created_at = alert
-        .created_at
-        .timestamp_millis();
+    let created_at = alert.created_at.timestamp_millis();
     let first_seen = alert.first_seen.timestamp_millis();
     let last_seen = alert.last_seen.timestamp_millis();
 

@@ -10,11 +10,11 @@ use std::time::Duration;
 use async_trait::async_trait;
 use tracing::instrument;
 
+use super::state::EmbeddedBusState;
 use crate::error::BusError;
 use crate::metrics;
 use crate::topics;
 use crate::traits::{BusConsumer, BusMessage};
-use super::state::EmbeddedBusState;
 
 /// Maximum delivery attempts before routing to the dead letter topic.
 const MAX_RETRIES: u8 = 3;
@@ -71,9 +71,10 @@ impl EmbeddedBusConsumer {
             let topic_clone = topic.clone();
 
             let result = tokio::task::spawn_blocking(move || {
-                let mut registry = state.topics.lock().map_err(|e| {
-                    BusError::Internal(format!("topics lock poisoned: {e}"))
-                })?;
+                let mut registry = state
+                    .topics
+                    .lock()
+                    .map_err(|e| BusError::Internal(format!("topics lock poisoned: {e}")))?;
                 let entry = registry.get_or_create(&topic_clone, &state.config.data_dir)?;
                 let msg = entry.wal.read_at_offset(&topic_clone, next_offset)?;
                 Ok::<Option<BusMessage>, BusError>(msg)
@@ -118,9 +119,10 @@ impl BusConsumer for EmbeddedBusConsumer {
         let topic_list = topics.to_vec();
 
         let offsets = tokio::task::spawn_blocking(move || {
-            let mut registry = state.topics.lock().map_err(|e| {
-                BusError::Internal(format!("topics lock poisoned: {e}"))
-            })?;
+            let mut registry = state
+                .topics
+                .lock()
+                .map_err(|e| BusError::Internal(format!("topics lock poisoned: {e}")))?;
             let mut offsets = HashMap::new();
             for topic in &topic_list {
                 let entry = registry.get_or_create(topic, &state.config.data_dir)?;
@@ -208,13 +210,17 @@ impl BusConsumer for EmbeddedBusConsumer {
         let offset = msg.offset;
 
         tokio::task::spawn_blocking(move || {
-            let mut registry = state.topics.lock().map_err(|e| {
-                BusError::Internal(format!("topics lock poisoned: {e}"))
-            })?;
+            let mut registry = state
+                .topics
+                .lock()
+                .map_err(|e| BusError::Internal(format!("topics lock poisoned: {e}")))?;
             let entry = registry.get_mut(&topic)?;
             entry.commit(&group, offset);
 
-            let lag = entry.wal.next_offset().saturating_sub(entry.committed_offset(&group));
+            let lag = entry
+                .wal
+                .next_offset()
+                .saturating_sub(entry.committed_offset(&group));
             metrics::set_consumer_lag(&topic, &group, lag);
             metrics::record_commit(&topic, &group);
 
@@ -236,10 +242,7 @@ impl BusConsumer for EmbeddedBusConsumer {
     async fn nack(&mut self, msg: &BusMessage, reason: &str) -> Result<(), BusError> {
         self.in_flight.remove(&msg.id);
 
-        let retry_count = self
-            .retry_counts
-            .entry(msg.id.clone())
-            .or_insert(0);
+        let retry_count = self.retry_counts.entry(msg.id.clone()).or_insert(0);
         *retry_count += 1;
         let retries = *retry_count;
 
@@ -270,9 +273,10 @@ impl BusConsumer for EmbeddedBusConsumer {
             let msg_id = uuid::Uuid::new_v4().to_string();
 
             tokio::task::spawn_blocking(move || {
-                let mut registry = state.topics.lock().map_err(|e| {
-                    BusError::Internal(format!("topics lock poisoned: {e}"))
-                })?;
+                let mut registry = state
+                    .topics
+                    .lock()
+                    .map_err(|e| BusError::Internal(format!("topics lock poisoned: {e}")))?;
                 let entry = registry.get_or_create(&dlq_topic, &state.config.data_dir)?;
                 entry.wal.append(
                     &msg_id,

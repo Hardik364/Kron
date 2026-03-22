@@ -113,8 +113,7 @@ fn compile_ebpf_programs() {
             "cargo:warning=llvm-link not found; using process_create.bpf.o only. \
             Install llvm-link for full multi-program eBPF support."
         );
-        std::fs::copy(&object_files[0], &combined)
-            .expect("cannot copy eBPF object as fallback");
+        std::fs::copy(&object_files[0], &combined).expect("cannot copy eBPF object as fallback");
     }
 
     // Strip debug sections to reduce binary size (optional).
@@ -124,10 +123,7 @@ fn compile_ebpf_programs() {
             .status();
     }
 
-    println!(
-        "cargo:rustc-env=KRON_EBPF_OBJ={}",
-        combined.display()
-    );
+    println!("cargo:rustc-env=KRON_EBPF_OBJ={}", combined.display());
 }
 
 /// Returns `true` if the given command exists on PATH.

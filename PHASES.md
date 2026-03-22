@@ -179,16 +179,16 @@ clickhouse-client -q "SELECT count() FROM events WHERE event_type IN ('network_c
 
 ### 1.5 Collector (`kron-collector`)
 
-- [ ] gRPC server: accepts event batches from agents (mTLS required)
-- [ ] Agent authentication: validates client cert against agent registry
-- [ ] Syslog UDP receiver (RFC 3164 + RFC 5424)
-- [ ] Syslog TCP receiver (with TLS)
-- [ ] HTTP intake endpoint: `POST /intake/v1/events` (JSON batch)
-- [ ] Agent registration endpoint: `POST /agents/register`
-- [ ] Agent heartbeat endpoint: `POST /agents/heartbeat`
-- [ ] Publishes received events to bus topic `kron.raw.{tenant_id}`
-- [ ] Rate limiting per agent (configurable, default 100K EPS per agent)
-- [ ] Prometheus metrics: events received/sec per source, error rate
+- [x] gRPC server: accepts event batches from agents (mTLS optional, plaintext dev fallback)
+- [x] Agent authentication: validates agent via registry, tenant_id from labels or config default
+- [x] Syslog UDP receiver (RFC 3164 + RFC 5424)
+- [x] Syslog TCP receiver (plaintext; TLS deferred to Phase 2)
+- [x] HTTP intake endpoint: `POST /intake/v1/events` (JSON batch, Bearer auth)
+- [x] Agent registration endpoint: `POST /agents/register`
+- [x] Agent heartbeat endpoint: `POST /agents/heartbeat`
+- [x] Publishes received events to bus topic `kron.raw.{tenant_id}`
+- [x] Rate limiting per agent (configurable, default 100K EPS per agent, 1-second sliding window)
+- [x] Prometheus metrics: events received/sec per source, error rate, dark-agent count
 
 **Acceptance criteria:**
 ```bash

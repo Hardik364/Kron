@@ -5,9 +5,7 @@
 
 use crate::query::EventFilter;
 use async_trait::async_trait;
-use kron_types::{
-    KronAlert, KronError, KronEvent, TenantContext,
-};
+use kron_types::{KronAlert, KronError, KronEvent, TenantContext};
 
 /// Result type for storage operations.
 pub type StorageResult<T> = Result<T, KronError>;
@@ -41,11 +39,7 @@ pub trait StorageEngine: Send + Sync {
     ) -> StorageResult<u64>;
 
     /// Insert a single event (convenience wrapper around `insert_events`).
-    async fn insert_event(
-        &self,
-        ctx: &TenantContext,
-        event: KronEvent,
-    ) -> StorageResult<()> {
+    async fn insert_event(&self, ctx: &TenantContext, event: KronEvent) -> StorageResult<()> {
         self.insert_events(ctx, vec![event]).await?;
         Ok(())
     }
@@ -136,11 +130,7 @@ pub trait StorageEngine: Send + Sync {
     ///
     /// # Returns
     /// Empty result, or error if alert not found or tenant mismatch.
-    async fn update_alert(
-        &self,
-        ctx: &TenantContext,
-        alert: &KronAlert,
-    ) -> StorageResult<()>;
+    async fn update_alert(&self, ctx: &TenantContext, alert: &KronAlert) -> StorageResult<()>;
 
     /// Insert an audit log entry.
     ///

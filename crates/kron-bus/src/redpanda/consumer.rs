@@ -107,10 +107,7 @@ impl BusConsumer for RedpandaConsumer {
             return Ok(Some(msg));
         }
 
-        let msg = tokio::time::timeout(timeout, async {
-            consumer.recv().await
-        })
-        .await;
+        let msg = tokio::time::timeout(timeout, async { consumer.recv().await }).await;
 
         match msg {
             Err(_elapsed) => Ok(None),
@@ -168,9 +165,7 @@ impl BusConsumer for RedpandaConsumer {
             msg.partition,
             rdkafka::Offset::Offset(msg.offset as i64 + 1),
         )
-        .map_err(|e| {
-            BusError::Internal(format!("failed to build topic partition list: {e}"))
-        })?;
+        .map_err(|e| BusError::Internal(format!("failed to build topic partition list: {e}")))?;
 
         consumer
             .commit(&tpl, CommitMode::Sync)
@@ -190,10 +185,7 @@ impl BusConsumer for RedpandaConsumer {
 
     #[instrument(skip(self, msg), fields(group_id = %self.group_id, topic = %msg.topic, offset = msg.offset))]
     async fn nack(&mut self, msg: &BusMessage, reason: &str) -> Result<(), BusError> {
-        let retry_count = self
-            .retry_counts
-            .entry(msg.id.clone())
-            .or_insert(0);
+        let retry_count = self.retry_counts.entry(msg.id.clone()).or_insert(0);
         *retry_count += 1;
         let retries = *retry_count;
 
@@ -217,7 +209,12 @@ impl BusConsumer for RedpandaConsumer {
             dlq_headers.insert("kron.dlq.original_id".to_owned(), msg.id.clone());
 
             self.dlq_producer
-                .send(&dlq_topic, msg.key.clone(), msg.payload.clone(), dlq_headers)
+                .send(
+                    &dlq_topic,
+                    msg.key.clone(),
+                    msg.payload.clone(),
+                    dlq_headers,
+                )
                 .await
                 .map_err(|e| {
                     BusError::Internal(format!("failed to write to DLQ '{dlq_topic}': {e}"))

@@ -161,7 +161,10 @@ mod tests {
     #[test]
     fn test_bpf_event_kind_when_valid_u32_then_converts() {
         assert_eq!(BpfEventKind::from_u32(1), Some(BpfEventKind::ProcessCreate));
-        assert_eq!(BpfEventKind::from_u32(2), Some(BpfEventKind::NetworkConnect));
+        assert_eq!(
+            BpfEventKind::from_u32(2),
+            Some(BpfEventKind::NetworkConnect)
+        );
         assert_eq!(BpfEventKind::from_u32(3), Some(BpfEventKind::FileAccess));
         assert_eq!(BpfEventKind::from_u32(0), None);
         assert_eq!(BpfEventKind::from_u32(99), None);

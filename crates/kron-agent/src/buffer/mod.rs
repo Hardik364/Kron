@@ -172,9 +172,7 @@ impl DiskBuffer {
                     let next_path = Self::segment_path(&self.data_dir, next_id);
                     if next_path.exists() || next_id <= self.write_segment_id {
                         // Delete the fully-consumed segment.
-                        let freed = fs::metadata(&segment_path)
-                            .map(|m| m.len())
-                            .unwrap_or(0);
+                        let freed = fs::metadata(&segment_path).map(|m| m.len()).unwrap_or(0);
                         fs::remove_file(&segment_path).map_err(|e| {
                             AgentError::Buffer(format!(
                                 "cannot remove drained segment {}: {e}",
@@ -274,9 +272,8 @@ impl DiskBuffer {
                 .and_then(|mut s| s.count_records())
                 .unwrap_or(0);
 
-            fs::remove_file(&oldest_path).map_err(|e| {
-                AgentError::Buffer(format!("cannot drop oldest segment: {e}"))
-            })?;
+            fs::remove_file(&oldest_path)
+                .map_err(|e| AgentError::Buffer(format!("cannot drop oldest segment: {e}")))?;
             self.total_bytes = self.total_bytes.saturating_sub(freed);
 
             tracing::warn!(
@@ -326,12 +323,10 @@ impl DiskBuffer {
         if !path.exists() {
             return Ok(None);
         }
-        let content = fs::read_to_string(&path).map_err(|e| {
-            AgentError::Buffer(format!("cannot read READ_POS: {e}"))
-        })?;
-        let pos: ReadPos = serde_json::from_str(&content).map_err(|e| {
-            AgentError::Buffer(format!("corrupt READ_POS: {e}"))
-        })?;
+        let content = fs::read_to_string(&path)
+            .map_err(|e| AgentError::Buffer(format!("cannot read READ_POS: {e}")))?;
+        let pos: ReadPos = serde_json::from_str(&content)
+            .map_err(|e| AgentError::Buffer(format!("corrupt READ_POS: {e}")))?;
         Ok(Some(pos))
     }
 
@@ -340,12 +335,10 @@ impl DiskBuffer {
         let content = serde_json::to_string(&self.read_pos)?;
         // Write to temp file then rename for atomicity.
         let tmp = path.with_extension("tmp");
-        fs::write(&tmp, &content).map_err(|e| {
-            AgentError::Buffer(format!("cannot write READ_POS.tmp: {e}"))
-        })?;
-        fs::rename(&tmp, &path).map_err(|e| {
-            AgentError::Buffer(format!("cannot rename READ_POS.tmp: {e}"))
-        })?;
+        fs::write(&tmp, &content)
+            .map_err(|e| AgentError::Buffer(format!("cannot write READ_POS.tmp: {e}")))?;
+        fs::rename(&tmp, &path)
+            .map_err(|e| AgentError::Buffer(format!("cannot rename READ_POS.tmp: {e}")))?;
         Ok(())
     }
 }

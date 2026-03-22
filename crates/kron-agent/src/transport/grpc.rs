@@ -19,7 +19,9 @@ use tonic::client::Grpc;
 use tonic::transport::{Certificate, Channel, ClientTlsConfig, Identity};
 use tonic::Request;
 
-use kron_types::{EventAck, EventBatch, HeartbeatRequest, HeartbeatResponse, RegisterRequest, RegisterResponse};
+use kron_types::{
+    EventAck, EventBatch, HeartbeatRequest, HeartbeatResponse, RegisterRequest, RegisterResponse,
+};
 
 use super::codec::{EventBatchCodec, HeartbeatCodec, RegisterCodec};
 use super::CollectorTransport;
@@ -45,8 +47,12 @@ impl GrpcTransport {
     pub async fn connect(config: &AgentConfig) -> Result<Self, AgentError> {
         let identity = load_identity(&config.cert_path, &config.key_path)?;
         let ca_cert = load_ca_cert(&config.ca_path)?;
-        let client =
-            build_channel(&config.collector_endpoint, identity.clone(), ca_cert.clone()).await?;
+        let client = build_channel(
+            &config.collector_endpoint,
+            identity.clone(),
+            ca_cert.clone(),
+        )
+        .await?;
 
         tracing::info!(
             endpoint = %config.collector_endpoint,
@@ -153,12 +159,10 @@ impl CollectorTransport for GrpcTransport {
 ///
 /// Returns [`AgentError::Tls`] if either file cannot be read.
 fn load_identity(cert_path: &Path, key_path: &Path) -> Result<Identity, AgentError> {
-    let cert_pem = std::fs::read(cert_path).map_err(|e| {
-        AgentError::Tls(format!("cannot read cert {}: {e}", cert_path.display()))
-    })?;
-    let key_pem = std::fs::read(key_path).map_err(|e| {
-        AgentError::Tls(format!("cannot read key {}: {e}", key_path.display()))
-    })?;
+    let cert_pem = std::fs::read(cert_path)
+        .map_err(|e| AgentError::Tls(format!("cannot read cert {}: {e}", cert_path.display())))?;
+    let key_pem = std::fs::read(key_path)
+        .map_err(|e| AgentError::Tls(format!("cannot read key {}: {e}", key_path.display())))?;
     Ok(Identity::from_pem(cert_pem, key_pem))
 }
 

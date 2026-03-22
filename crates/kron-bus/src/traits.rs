@@ -132,6 +132,32 @@ pub trait BusProducer: Send + Sync + 'static {
     async fn health_check(&self) -> Result<(), BusError>;
 }
 
+/// Blanket impl so `Arc::new(box_producer)` can coerce to `Arc<dyn BusProducer>`.
+#[async_trait]
+impl BusProducer for Box<dyn BusProducer> {
+    async fn send(
+        &self,
+        topic: &str,
+        key: Option<Bytes>,
+        payload: Bytes,
+        headers: HashMap<String, String>,
+    ) -> Result<u64, BusError> {
+        (**self).send(topic, key, payload, headers).await
+    }
+
+    async fn send_batch(&self, messages: Vec<OutboundMessage>) -> Result<u64, BusError> {
+        (**self).send_batch(messages).await
+    }
+
+    async fn flush(&self, timeout: Duration) -> Result<(), BusError> {
+        (**self).flush(timeout).await
+    }
+
+    async fn health_check(&self) -> Result<(), BusError> {
+        (**self).health_check().await
+    }
+}
+
 /// A bus consumer that reads messages from subscribed topics.
 ///
 /// Consumers provide at-least-once delivery: calling [`BusConsumer::commit`]

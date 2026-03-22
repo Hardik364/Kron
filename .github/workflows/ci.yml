@@ -10,6 +10,11 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  CC: gcc
+  CXX: g++
+  AR: ar
+  DLLTOOL: ""
+  CXXFLAGS: "-include cstdint"
 
 jobs:
   check:
@@ -26,7 +31,8 @@ jobs:
             clang llvm llvm-dev libclang-dev \
             cmake pkg-config libssl-dev \
             g++ libstdc++-12-dev \
-            linux-headers-$(uname -r) || true
+            binutils mold \
+            linux-headers-$(uname -r)
       - run: cargo check --workspace --all-targets
 
   fmt:
@@ -55,7 +61,8 @@ jobs:
             clang llvm llvm-dev libclang-dev \
             cmake pkg-config libssl-dev \
             g++ libstdc++-12-dev \
-            linux-headers-$(uname -r) || true
+            binutils mold \
+            linux-headers-$(uname -r)
       - run: cargo clippy --workspace --all-targets -- -D warnings
 
   test:
@@ -72,7 +79,8 @@ jobs:
             clang llvm llvm-dev libclang-dev \
             cmake pkg-config libssl-dev \
             g++ libstdc++-12-dev \
-            linux-headers-$(uname -r) || true
+            binutils mold \
+            linux-headers-$(uname -r)
       - run: cargo test --workspace --lib
 
   integration:
@@ -112,7 +120,8 @@ jobs:
             clang llvm llvm-dev libclang-dev \
             cmake pkg-config libssl-dev \
             g++ libstdc++-12-dev \
-            linux-headers-$(uname -r) || true
+            binutils mold \
+            linux-headers-$(uname -r)
       - name: Run integration tests
         run: cargo test --workspace -- --include-ignored integration
         env:

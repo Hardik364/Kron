@@ -10,9 +10,9 @@ use crate::clickhouse::ClickHouseEngine;
 use crate::duckdb::DuckDbEngine;
 use crate::traits::{AuditLogEntry, LatencyStats, StorageEngine, StorageResult};
 use async_trait::async_trait;
+use kron_types::KronError;
 use kron_types::{DeploymentMode, KronAlert, KronConfig, KronEvent, TenantContext};
 use tracing::info;
-use kron_types::KronError;
 
 /// Enum of supported storage backends.
 #[derive(Clone)]
@@ -61,8 +61,7 @@ impl AdaptiveStorage {
             DeploymentMode::Standard => {
                 info!("Initializing Standard tier storage (ClickHouse)");
                 let migrations_dir = config.clickhouse.migrations_dir.to_string_lossy();
-                let engine =
-                    ClickHouseEngine::new(&config.clickhouse, &migrations_dir).await?;
+                let engine = ClickHouseEngine::new(&config.clickhouse, &migrations_dir).await?;
                 engine.apply_migrations().await?;
                 BackendEnum::ClickHouse(std::sync::Arc::new(engine))
             }
@@ -70,8 +69,7 @@ impl AdaptiveStorage {
                 info!("Initializing Enterprise tier storage (ClickHouse sharded)");
                 // Sharding is handled at the ClickHouse cluster level.
                 let migrations_dir = config.clickhouse.migrations_dir.to_string_lossy();
-                let engine =
-                    ClickHouseEngine::new(&config.clickhouse, &migrations_dir).await?;
+                let engine = ClickHouseEngine::new(&config.clickhouse, &migrations_dir).await?;
                 engine.apply_migrations().await?;
                 BackendEnum::ClickHouse(std::sync::Arc::new(engine))
             }
@@ -90,9 +88,7 @@ impl StorageEngine for AdaptiveStorage {
     ) -> StorageResult<u64> {
         match &self.backend {
             BackendEnum::DuckDb(engine) => engine.insert_events(ctx, events).await,
-            BackendEnum::ClickHouse(engine) => {
-                engine.insert_events(ctx, events).await
-            }
+            BackendEnum::ClickHouse(engine) => engine.insert_events(ctx, events).await,
         }
     }
 
@@ -103,12 +99,8 @@ impl StorageEngine for AdaptiveStorage {
         limit: u32,
     ) -> StorageResult<Vec<KronEvent>> {
         match &self.backend {
-            BackendEnum::DuckDb(engine) => {
-                engine.query_events(ctx, filter, limit).await
-            }
-            BackendEnum::ClickHouse(engine) => {
-                engine.query_events(ctx, filter, limit).await
-            }
+            BackendEnum::DuckDb(engine) => engine.query_events(ctx, filter, limit).await,
+            BackendEnum::ClickHouse(engine) => engine.query_events(ctx, filter, limit).await,
         }
     }
 
@@ -119,9 +111,7 @@ impl StorageEngine for AdaptiveStorage {
     ) -> StorageResult<Option<KronEvent>> {
         match &self.backend {
             BackendEnum::DuckDb(engine) => engine.get_event(ctx, event_id).await,
-            BackendEnum::ClickHouse(engine) => {
-                engine.get_event(ctx, event_id).await
-            }
+            BackendEnum::ClickHouse(engine) => engine.get_event(ctx, event_id).await,
         }
     }
 
@@ -132,9 +122,7 @@ impl StorageEngine for AdaptiveStorage {
     ) -> StorageResult<u64> {
         match &self.backend {
             BackendEnum::DuckDb(engine) => engine.insert_alerts(ctx, alerts).await,
-            BackendEnum::ClickHouse(engine) => {
-                engine.insert_alerts(ctx, alerts).await
-            }
+            BackendEnum::ClickHouse(engine) => engine.insert_alerts(ctx, alerts).await,
         }
     }
 
@@ -145,12 +133,8 @@ impl StorageEngine for AdaptiveStorage {
         offset: u32,
     ) -> StorageResult<Vec<KronAlert>> {
         match &self.backend {
-            BackendEnum::DuckDb(engine) => {
-                engine.query_alerts(ctx, limit, offset).await
-            }
-            BackendEnum::ClickHouse(engine) => {
-                engine.query_alerts(ctx, limit, offset).await
-            }
+            BackendEnum::DuckDb(engine) => engine.query_alerts(ctx, limit, offset).await,
+            BackendEnum::ClickHouse(engine) => engine.query_alerts(ctx, limit, offset).await,
         }
     }
 
@@ -161,22 +145,14 @@ impl StorageEngine for AdaptiveStorage {
     ) -> StorageResult<Option<KronAlert>> {
         match &self.backend {
             BackendEnum::DuckDb(engine) => engine.get_alert(ctx, alert_id).await,
-            BackendEnum::ClickHouse(engine) => {
-                engine.get_alert(ctx, alert_id).await
-            }
+            BackendEnum::ClickHouse(engine) => engine.get_alert(ctx, alert_id).await,
         }
     }
 
-    async fn update_alert(
-        &self,
-        ctx: &TenantContext,
-        alert: &KronAlert,
-    ) -> StorageResult<()> {
+    async fn update_alert(&self, ctx: &TenantContext, alert: &KronAlert) -> StorageResult<()> {
         match &self.backend {
             BackendEnum::DuckDb(engine) => engine.update_alert(ctx, alert).await,
-            BackendEnum::ClickHouse(engine) => {
-                engine.update_alert(ctx, alert).await
-            }
+            BackendEnum::ClickHouse(engine) => engine.update_alert(ctx, alert).await,
         }
     }
 
@@ -186,12 +162,8 @@ impl StorageEngine for AdaptiveStorage {
         entry: AuditLogEntry,
     ) -> StorageResult<()> {
         match &self.backend {
-            BackendEnum::DuckDb(engine) => {
-                engine.insert_audit_log(ctx, entry).await
-            }
-            BackendEnum::ClickHouse(engine) => {
-                engine.insert_audit_log(ctx, entry).await
-            }
+            BackendEnum::DuckDb(engine) => engine.insert_audit_log(ctx, entry).await,
+            BackendEnum::ClickHouse(engine) => engine.insert_audit_log(ctx, entry).await,
         }
     }
 

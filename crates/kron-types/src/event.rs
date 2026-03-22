@@ -628,8 +628,14 @@ mod tests {
             .build()
             .expect("valid event");
 
-        assert_eq!(event.fields.get("app_name").map(String::as_str), Some("nginx"));
-        assert_eq!(event.fields.get("request_id").map(String::as_str), Some("abc123"));
+        assert_eq!(
+            event.fields.get("app_name").map(String::as_str),
+            Some("nginx")
+        );
+        assert_eq!(
+            event.fields.get("request_id").map(String::as_str),
+            Some("abc123")
+        );
     }
 
     #[test]

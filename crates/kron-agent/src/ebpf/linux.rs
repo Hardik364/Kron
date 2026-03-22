@@ -22,8 +22,7 @@ use aya_log::EbpfLogger;
 use tokio::sync::mpsc;
 
 use crate::bpf_types::{
-    BpfEventHeader, BpfEventKind, BpfFileAccessEvent, BpfNetworkConnectEvent,
-    BpfProcessCreateEvent,
+    BpfEventHeader, BpfEventKind, BpfFileAccessEvent, BpfNetworkConnectEvent, BpfProcessCreateEvent,
 };
 use crate::config::EbpfConfig;
 use crate::error::AgentError;
@@ -61,10 +60,7 @@ impl EbpfManager {
     /// Returns [`AgentError::Ebpf`] if the eBPF ELF cannot be loaded, a
     /// program cannot be attached to its hook point, or the ring buffer
     /// map cannot be opened.
-    pub fn load(
-        cfg: &EbpfConfig,
-        event_tx: mpsc::Sender<RawBpfEvent>,
-    ) -> Result<Self, AgentError> {
+    pub fn load(cfg: &EbpfConfig, event_tx: mpsc::Sender<RawBpfEvent>) -> Result<Self, AgentError> {
         // Safety: loading our own verified eBPF ELF object is safe.
         let mut ebpf = unsafe {
             Ebpf::load(include_bytes_aligned!(concat!(
@@ -118,21 +114,20 @@ impl EbpfManager {
             .program_mut(prog_name)
             .ok_or_else(|| AgentError::Ebpf(format!("program '{prog_name}' not found")))?
             .try_into()
-            .map_err(|e| AgentError::Ebpf(format!("program '{prog_name}' is not a TracePoint: {e}")))?;
+            .map_err(|e| {
+                AgentError::Ebpf(format!("program '{prog_name}' is not a TracePoint: {e}"))
+            })?;
         prog.load()
             .map_err(|e| AgentError::Ebpf(format!("load '{prog_name}': {e}")))?;
-        prog.attach(category, name)
-            .map_err(|e| AgentError::Ebpf(format!("attach '{prog_name}' to {category}/{name}: {e}")))?;
+        prog.attach(category, name).map_err(|e| {
+            AgentError::Ebpf(format!("attach '{prog_name}' to {category}/{name}: {e}"))
+        })?;
         tracing::debug!(program = prog_name, hook = %format!("{category}/{name}"), "TracePoint attached");
         Ok(())
     }
 
     /// Attaches a kprobe program.
-    fn attach_kprobe(
-        ebpf: &mut Ebpf,
-        prog_name: &str,
-        fn_name: &str,
-    ) -> Result<(), AgentError> {
+    fn attach_kprobe(ebpf: &mut Ebpf, prog_name: &str, fn_name: &str) -> Result<(), AgentError> {
         let prog: &mut KProbe = ebpf
             .program_mut(prog_name)
             .ok_or_else(|| AgentError::Ebpf(format!("program '{prog_name}' not found")))?
@@ -140,8 +135,9 @@ impl EbpfManager {
             .map_err(|e| AgentError::Ebpf(format!("program '{prog_name}' is not a KProbe: {e}")))?;
         prog.load()
             .map_err(|e| AgentError::Ebpf(format!("load '{prog_name}': {e}")))?;
-        prog.attach(fn_name, 0)
-            .map_err(|e| AgentError::Ebpf(format!("attach '{prog_name}' to kprobe/{fn_name}: {e}")))?;
+        prog.attach(fn_name, 0).map_err(|e| {
+            AgentError::Ebpf(format!("attach '{prog_name}' to kprobe/{fn_name}: {e}"))
+        })?;
         tracing::debug!(program = prog_name, hook = %format!("kprobe/{fn_name}"), "KProbe attached");
         Ok(())
     }
@@ -223,9 +219,8 @@ fn decode_ring_buf_record(
     // `BpfEventHeader` is `repr(C)` with no padding requirements beyond
     // alignment, which we satisfy because ring buffer records are 8-byte
     // aligned by the kernel.
-    let header: BpfEventHeader = unsafe {
-        std::ptr::read_unaligned(data.as_ptr().cast::<BpfEventHeader>())
-    };
+    let header: BpfEventHeader =
+        unsafe { std::ptr::read_unaligned(data.as_ptr().cast::<BpfEventHeader>()) };
 
     match BpfEventKind::from_u32(header.kind) {
         Some(BpfEventKind::ProcessCreate) => {
@@ -237,9 +232,8 @@ fn decode_ring_buf_record(
                 )));
             }
             // Safety: length and alignment verified above.
-            let ev: BpfProcessCreateEvent = unsafe {
-                std::ptr::read_unaligned(data.as_ptr().cast::<BpfProcessCreateEvent>())
-            };
+            let ev: BpfProcessCreateEvent =
+                unsafe { std::ptr::read_unaligned(data.as_ptr().cast::<BpfProcessCreateEvent>()) };
             Ok(Some(RawBpfEvent::ProcessCreate(Box::new(ev))))
         }
 
@@ -252,9 +246,8 @@ fn decode_ring_buf_record(
                 )));
             }
             // Safety: length verified above.
-            let ev: BpfNetworkConnectEvent = unsafe {
-                std::ptr::read_unaligned(data.as_ptr().cast::<BpfNetworkConnectEvent>())
-            };
+            let ev: BpfNetworkConnectEvent =
+                unsafe { std::ptr::read_unaligned(data.as_ptr().cast::<BpfNetworkConnectEvent>()) };
             Ok(Some(RawBpfEvent::NetworkConnect(Box::new(ev))))
         }
 
@@ -267,9 +260,8 @@ fn decode_ring_buf_record(
                 )));
             }
             // Safety: length verified above.
-            let ev: BpfFileAccessEvent = unsafe {
-                std::ptr::read_unaligned(data.as_ptr().cast::<BpfFileAccessEvent>())
-            };
+            let ev: BpfFileAccessEvent =
+                unsafe { std::ptr::read_unaligned(data.as_ptr().cast::<BpfFileAccessEvent>()) };
             // Filter: only emit if the path starts with a monitored prefix.
             let path = crate::bpf_types::c_str_from_bytes(&ev.path);
             let is_sensitive = sensitive_paths

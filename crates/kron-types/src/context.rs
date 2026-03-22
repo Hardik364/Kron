@@ -26,11 +26,7 @@ impl TenantContext {
     /// This constructor must only be called from the JWT validation middleware.
     /// All other code receives `TenantContext` by reference, never constructs it.
     #[must_use]
-    pub fn new(
-        tenant_id: TenantId,
-        user_id: impl Into<String>,
-        role: impl Into<String>,
-    ) -> Self {
+    pub fn new(tenant_id: TenantId, user_id: impl Into<String>, role: impl Into<String>) -> Self {
         Self {
             tenant_id,
             user_id: user_id.into(),

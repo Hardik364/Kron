@@ -102,23 +102,13 @@ impl<T: DeserializeOwned> Decoder for JsonDecoder<T> {
 }
 
 /// Convenience alias for the codec used on outbound batches.
-pub type EventBatchCodec = JsonCodec<
-    kron_types::EventBatch,
-    kron_types::EventAck,
->;
+pub type EventBatchCodec = JsonCodec<kron_types::EventBatch, kron_types::EventAck>;
 
 /// Convenience alias for the codec used on heartbeat RPCs.
-pub type HeartbeatCodec = JsonCodec<
-    kron_types::HeartbeatRequest,
-    kron_types::HeartbeatResponse,
->;
+pub type HeartbeatCodec = JsonCodec<kron_types::HeartbeatRequest, kron_types::HeartbeatResponse>;
 
 /// Convenience alias for the codec used on registration RPCs.
-pub type RegisterCodec = JsonCodec<
-    kron_types::RegisterRequest,
-    kron_types::RegisterResponse,
->;
+pub type RegisterCodec = JsonCodec<kron_types::RegisterRequest, kron_types::RegisterResponse>;
 
 /// The `Content-Type` header value required by gRPC for JSON payloads.
 pub const GRPC_JSON_CONTENT_TYPE: &str = "application/grpc+json";
-
