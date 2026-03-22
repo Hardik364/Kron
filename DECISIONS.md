@@ -171,6 +171,26 @@ If it's already here, follow it. If you want to change a decision, propose it to
 
 ---
 
+## ADR-017: maxminddb for GeoLite2 IP enrichment
+
+**Date:** 2026-03-22
+**Status:** Final
+**Decision:** Use the `maxminddb` crate (v0.24) to read MaxMind GeoLite2-City MMDB files for IP geolocation enrichment in kron-normalizer.
+**Rationale:** MaxMind GeoLite2 is the de-facto standard for offline IP geolocation. The `maxminddb` crate is the only production-quality Rust reader. The MMDB is embedded on disk (no network calls), which satisfies ADR-014 (no external AI/data calls).
+**Consequences:** The GeoLite2-City.mmdb file (~65 MB) must be distributed with deployments. Path configured via `normalizer.geoip_db_path`. If absent, enrichment is disabled gracefully (logged warning, no error).
+
+---
+
+## ADR-018: Simple HashMap + Instant for asset TTL cache
+
+**Date:** 2026-03-22
+**Status:** Final
+**Decision:** Implement the asset enrichment cache in kron-normalizer as `HashMap<String, (Option<AssetInfo>, Instant)>` with manual TTL checks. No additional caching crate (no `moka`, no `lru`).
+**Rationale:** The cache in Phase 1.6 is always empty (storage backend not yet wired). A simple HashMap is sufficient infrastructure. Adding a new crate requires human approval; for a feature that is a no-op this phase, it's not justified.
+**Consequences:** Cache eviction is manual (`evict_expired()` call from maintenance loop). Max size is enforced by random eviction. Upgrade to `moka` or similar when backend lookup is wired in Phase 2.
+
+---
+
 ## Open Questions (not yet decided)
 
 | Question | Raised by | Date | Context |

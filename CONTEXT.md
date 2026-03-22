@@ -339,3 +339,60 @@ The human updates this after each session, or Claude updates it at the end of ea
    - Reads from `kron.raw.{tenant_id}`, normalizes, writes to `kron.normalized.{tenant_id}`
    - GeoIP enrichment, FQDN resolution, asset lookup
 3. Run `cargo check --workspace` first to verify all crates still compile together
+
+
+---
+
+## Session: 2026-03-22 — Phase 1.6 Normalizer (kron-normalizer) Complete
+
+### Completed
+- **Phase 1.6 (kron-normalizer):** All 12 tasks implemented, `cargo check -p kron-normalizer` passes clean
+  - `error.rs`: `NormalizerError` enum (7 variants, thiserror)
+  - `metrics.rs`: Prometheus functions — events normalized by format, storage errors, GeoIP lookups/misses, asset cache hits/misses, pipeline latency histogram, consumer lag gauge
+  - `shutdown.rs`: `ShutdownHandle` with broadcast + SIGTERM/Ctrl-C (same pattern as collector)
+  - `timestamp.rs`: 15+ format parser — RFC 3339, RFC 2822, Unix epoch (secs/millis/float), ISO space, CLF, Windows, Cisco, CEF extension, syslog BSD (year injection + roll-back) — 9 unit tests
+  - `dedup.rs`: xxHash3-64 fingerprint over 7 canonical fields; `compute_and_assign` skips if already set — 5 unit tests
+  - `parser/cef.rs`: CEF header (7 fields) + extension key=value parser (OnceLock regex); maps 20+ CEF keys to KronEvent fields — 4 unit tests
+  - `parser/leef.rs`: LEEF 1.0 (tab) and 2.0 (custom delimiter + hex escape) — 3 unit tests
+  - `parser/json_event.rs`: JSON object parser mapping 30+ keys to canonical fields — 4 unit tests
+  - `parser/mod.rs`: `detect_and_parse` — routes to sub-parser or pass-through; agent events skipped — 5 unit tests
+  - `enrich/geoip.rs`: MaxMind GeoLite2-City reader; no-op if MMDB absent; skips private IPs
+  - `enrich/asset.rs`: TTL cache with manual eviction; always-empty backend in Phase 1.6 — 3 unit tests
+  - `enrich/mod.rs`: `Enricher` orchestrator (GeoIP + asset in order)
+  - `pipeline.rs`: full `parse → enrich → dedup → storage → publish` pipeline
+  - `normalizer.rs`: bus consumer loop; subscribes to per-tenant topics; nacks on failure
+  - `main.rs`: CLI args, tracing init, all subsystem construction, tokio runtime
+  - Extended `NormalizerConfig` with `raw_tenant_ids`, `consumer_group_id`, `metrics_addr`
+  - Added `maxminddb = "0.24"` to workspace Cargo.toml
+
+### Decisions Made
+- ADR-017: maxminddb for GeoLite2 IP enrichment (see DECISIONS.md)
+- ADR-018: Simple HashMap + Instant for asset TTL cache (no additional crate; no-op in Phase 1.6)
+- Format detection order: agent-structured → CEF → LEEF → JSON → collector_parsed
+- Asset cache always empty at startup in Phase 1.6; backend wired in Phase 2 when kron-storage queries are implemented
+- Storage write in pipeline is best-effort (failure logged, event still published to enriched topic)
+- GeoIP: private/loopback IPs skip lookup silently; unknown IPs from public space increment miss counter
+
+### Code Written
+- All files under `crates/kron-normalizer/src/` (15 new files)
+- Modified: `crates/kron-normalizer/Cargo.toml` — added 9 new dependencies
+- Modified: `crates/kron-types/src/config.rs` — added 3 fields to `NormalizerConfig`
+- Modified: `Cargo.toml` (workspace) — added maxminddb = "0.24"
+- Modified: `DECISIONS.md` — ADR-017, ADR-018
+- Modified: `PHASES.md` — Phase 1.6 all tasks marked [x]
+
+### Known Issues / Tech Debt
+- 7 dead-code warnings for fields/methods used only in Phase 2+ (asset cache insert/evict, GeoIpLookup::is_enabled, set_consumer_lag, etc.)
+- Asset enrichment is a no-op until Phase 2 wires kron-storage queries
+- GeoIP ASN lookup requires GeoLite2-ASN MMDB (separate file); only City lookup currently implemented
+- Integration tests require running bus (Redpanda or embedded) + configured tenant IDs
+
+### Open Questions
+- Should Phase 1.6 GeoIP also resolve ASN? Requires second MMDB file (GeoLite2-ASN).
+- Should the normalizer support topic wildcard subscription (all kron.raw.* topics) instead of explicit tenant list?
+
+### Next Session Should Start With
+1. Read CLAUDE.md, PHASES.md, CONTEXT.md
+2. **Phase 1.7 (kron-ctl):** CLI tool — health, events query/tail, agents list, storage stats, migration commands
+3. After Phase 1.7: run Phase 1 Gate acceptance test (`./scripts/phase1-acceptance.sh`)
+4. Run `cargo check --workspace` to verify all crates compile together before starting 1.7
