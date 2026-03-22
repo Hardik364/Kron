@@ -79,11 +79,11 @@ pub struct KronEvent {
     pub user_type: Option<UserType>,
 
     // --- Event classification ---
-    /// Normalized event type name (e.g. "process_create", "network_connect").
+    /// Normalized event type name (e.g. `process_create`, `network_connect`).
     pub event_type: String,
     /// High-level OCSF category of this event.
     pub event_category: Option<EventCategory>,
-    /// Specific action within the category (e.g. "login_failed").
+    /// Specific action within the category (e.g. `login_failed`).
     pub event_action: Option<String>,
 
     // --- Network fields ---
@@ -468,7 +468,7 @@ impl KronEventBuilder {
         let ingest_lag_ms = u32::try_from(lag_ms).unwrap_or(0);
 
         Ok(KronEvent {
-            event_id: self.event_id.unwrap_or_else(EventId::new),
+            event_id: self.event_id.unwrap_or_default(),
             tenant_id,
             dedup_hash: self.dedup_hash.unwrap_or(0),
             ts,
@@ -542,6 +542,7 @@ impl KronEventBuilder {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     use super::*;
 
@@ -561,7 +562,7 @@ mod tests {
         assert_eq!(event.event_type, "process_create");
         assert_eq!(event.schema_version, 1);
         assert!(!event.ioc_hit);
-        assert_eq!(event.anomaly_score, 0.0);
+        assert!((event.anomaly_score - 0.0_f32).abs() < f32::EPSILON);
     }
 
     #[test]

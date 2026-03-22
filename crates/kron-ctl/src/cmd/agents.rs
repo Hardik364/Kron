@@ -76,8 +76,14 @@ pub async fn run_create(config: &CtlConfig, args: CreateArgs) -> Result<(), CtlE
     output::header("Agent Registered");
     println!("  agent_id      : {}", resp.agent_id);
     println!("  tenant_id     : {}", resp.tenant_id);
-    println!("  registered_at : {}", resp.registered_at.format("%Y-%m-%d %H:%M:%S UTC"));
+    println!(
+        "  registered_at : {}",
+        resp.registered_at.format("%Y-%m-%d %H:%M:%S UTC")
+    );
     println!();
-    println!("Set agent.id = \"{}\" in the agent's kron.toml.", resp.agent_id);
+    println!(
+        "Set agent.id = \"{}\" in the agent's kron.toml.",
+        resp.agent_id
+    );
     Ok(())
 }

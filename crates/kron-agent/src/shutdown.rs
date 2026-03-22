@@ -71,6 +71,7 @@ impl ShutdownHandle {
     /// Manually triggers shutdown without an OS signal.
     ///
     /// Useful in tests or when a fatal internal error requires clean exit.
+    #[allow(dead_code)]
     pub fn trigger(&self) {
         let _ = self.tx.send(());
     }

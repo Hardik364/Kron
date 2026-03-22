@@ -21,6 +21,7 @@ use crate::error::AgentError;
 /// A segment file opened in append mode.
 pub struct Segment {
     file: File,
+    #[allow(dead_code)]
     mode: SegmentMode,
 }
 
@@ -72,7 +73,9 @@ impl Segment {
     ///
     /// Returns [`AgentError::Buffer`] on I/O failure.
     pub fn append(&mut self, json_body: &[u8]) -> Result<u64, AgentError> {
-        let len = json_body.len() as u32;
+        let len = u32::try_from(json_body.len()).map_err(|e| {
+            AgentError::Buffer(format!("event JSON too large for segment (max 4 GiB): {e}"))
+        })?;
         let checksum: u64 = {
             let mut data = Vec::with_capacity(4 + json_body.len());
             data.extend_from_slice(&len.to_le_bytes());
@@ -124,6 +127,8 @@ impl Segment {
                 return Err(AgentError::Buffer(format!("read len prefix: {e}")));
             }
         }
+        // u32 body length from disk — fits in usize on all supported (64-bit) platforms.
+        #[allow(clippy::cast_possible_truncation)]
         let body_len = u32::from_le_bytes(len_buf) as usize;
 
         // Read body.
@@ -158,6 +163,8 @@ impl Segment {
         let stored_checksum = u64::from_le_bytes(cs_buf);
         let computed: u64 = {
             let mut data = Vec::with_capacity(4 + body_len);
+            // body_len was read from a u32 on-disk, so this conversion is safe.
+            #[allow(clippy::cast_possible_truncation)]
             data.extend_from_slice(&(body_len as u32).to_le_bytes());
             data.extend_from_slice(&body);
             xxh3_64(&data)
@@ -190,27 +197,19 @@ impl Segment {
     pub fn count_records(&mut self) -> Result<usize, AgentError> {
         let mut count = 0;
         let mut offset = 0u64;
-        loop {
-            match self.read_at(offset)? {
-                Some((_, new_offset)) => {
-                    count += 1;
-                    offset = new_offset;
-                }
-                None => break,
-            }
+        while let Some((_, new_offset)) = self.read_at(offset)? {
+            count += 1;
+            offset = new_offset;
         }
         Ok(count)
     }
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use kron_types::{
-        enums::{AssetCriticality, EventSource, Severity},
-        event::KronEvent,
-        ids::{EventId, TenantId},
-    };
+    use kron_types::{enums::EventSource, event::KronEvent, ids::TenantId};
 
     fn make_event() -> KronEvent {
         KronEvent::builder()

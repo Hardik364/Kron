@@ -166,7 +166,10 @@ mod tests {
 
     #[test]
     fn test_syslog_content_detected_as_collector_parsed() {
-        let event = make_event(EventSource::Syslog, "<13>Jan 15 10:30:45 host sshd: accepted");
+        let event = make_event(
+            EventSource::Syslog,
+            "<13>Jan 15 10:30:45 host sshd: accepted",
+        );
         assert_eq!(detect(&event), EventFormat::CollectorParsed);
     }
 }

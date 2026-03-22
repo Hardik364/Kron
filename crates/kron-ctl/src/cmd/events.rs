@@ -64,7 +64,14 @@ pub async fn run_query(config: &CtlConfig, args: QueryArgs) -> Result<(), CtlErr
     }
 
     // Table output.
-    let mut table = Table::new(vec!["TIMESTAMP", "TYPE", "HOST", "SRC_IP", "USER", "PROCESS"]);
+    let mut table = Table::new(vec![
+        "TIMESTAMP",
+        "TYPE",
+        "HOST",
+        "SRC_IP",
+        "USER",
+        "PROCESS",
+    ]);
     for e in &events {
         table.add_row(vec![
             e.ts.format("%Y-%m-%d %H:%M:%S").to_string(),
@@ -101,7 +108,10 @@ pub async fn run_tail(config: &CtlConfig, args: TailArgs) -> Result<(), CtlError
 
     output::header(&format!("Tailing events for tenant {}", args.tenant));
     println!("Press Ctrl-C to stop.\n");
-    println!("{:<20} {:<20} {:<20} {:<15}", "TIMESTAMP", "TYPE", "HOST", "SRC_IP");
+    println!(
+        "{:<20} {:<20} {:<20} {:<15}",
+        "TIMESTAMP", "TYPE", "HOST", "SRC_IP"
+    );
     println!("{}", "─".repeat(80));
 
     let mut last_seen: Option<DateTime<Utc>> = None;

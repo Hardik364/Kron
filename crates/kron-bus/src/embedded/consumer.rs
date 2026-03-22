@@ -110,7 +110,7 @@ impl EmbeddedBusConsumer {
 impl BusConsumer for EmbeddedBusConsumer {
     #[instrument(skip(self), fields(group_id = %group_id, topic_count = topics.len()))]
     async fn subscribe(&mut self, topics: &[String], group_id: &str) -> Result<(), BusError> {
-        self.group_id = group_id.to_owned();
+        group_id.clone_into(&mut self.group_id);
         self.subscribed = topics.to_vec();
 
         // Restore committed read offsets from WAL state.
@@ -181,10 +181,10 @@ impl BusConsumer for EmbeddedBusConsumer {
             }
 
             tokio::select! {
-                _ = notify.notified() => {
+                () = notify.notified() => {
                     // New messages may be available — loop and retry.
                 }
-                _ = tokio::time::sleep(remaining) => {
+                () = tokio::time::sleep(remaining) => {
                     return Ok(None);
                 }
             }

@@ -50,6 +50,7 @@ pub fn record_send_latency_ms(latency_ms: f64) {
 }
 
 /// Sets the current ring buffer utilization as a fraction in [0.0, 1.0].
+#[allow(dead_code)]
 pub fn set_ring_buffer_utilization(fraction: f64) {
     gauge!("kron_agent_ring_buffer_utilization").set(fraction);
 }

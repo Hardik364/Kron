@@ -114,6 +114,7 @@ impl AdaptiveBus {
 
     /// Returns an error when Redpanda support was not compiled in.
     #[cfg(not(feature = "redpanda"))]
+    #[allow(clippy::unused_self)]
     fn new_redpanda_producer(&self) -> Result<Box<dyn BusProducer>, BusError> {
         Err(BusError::Internal(
             "Redpanda support is not compiled in. \
@@ -137,6 +138,7 @@ impl AdaptiveBus {
 
     /// Returns an error when Redpanda support was not compiled in.
     #[cfg(not(feature = "redpanda"))]
+    #[allow(clippy::unused_self)]
     fn new_redpanda_consumer(&self, _service_name: &str) -> Result<Box<dyn BusConsumer>, BusError> {
         Err(BusError::Internal(
             "Redpanda support is not compiled in. \

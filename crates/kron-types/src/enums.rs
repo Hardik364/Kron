@@ -1,7 +1,7 @@
 //! Enumerated types for KRON event and alert classification.
 //!
-//! All enums derive `Serialize`/`Deserialize` with lowercase or snake_case
-//! string representations matching the ClickHouse `LowCardinality(String)`
+//! All enums derive `Serialize`/`Deserialize` with lowercase or `snake_case`
+//! string representations matching the `ClickHouse` `LowCardinality(String)`
 //! column values in the database schema.
 
 use std::fmt;
@@ -122,7 +122,7 @@ pub enum EventSource {
     WindowsEtw,
     /// Syslog over UDP or TCP (RFC 3164 / RFC 5424).
     Syslog,
-    /// AWS CloudTrail API events.
+    /// AWS `CloudTrail` API events.
     Cloudtrail,
     /// Azure Monitor Activity Log.
     AzureActivityLog,
@@ -132,7 +132,7 @@ pub enum EventSource {
     HttpIntake,
     /// OT/SCADA device log.
     OtScada,
-    /// Network flow record (NetFlow v9 / IPFIX / sFlow).
+    /// Network flow record (`NetFlow` v9 / IPFIX / sFlow).
     NetworkFlow,
     /// DHCP server log.
     Dhcp,
@@ -530,6 +530,7 @@ impl fmt::Display for AlertStatus {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
 

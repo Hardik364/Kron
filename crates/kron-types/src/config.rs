@@ -32,9 +32,9 @@ use crate::error::KronError;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum DeploymentMode {
-    /// Single-node, DuckDB + embedded bus. For SMBs.
+    /// Single-node, `DuckDB` + embedded bus. For SMBs.
     Nano,
-    /// Single-node or HA cluster, ClickHouse + Redpanda. For mid-market.
+    /// Single-node or HA cluster, `ClickHouse` + Redpanda. For mid-market.
     #[default]
     Standard,
     /// Multi-node HA, SPIFFE/SPIRE, MSSP portal. For enterprises.
@@ -45,20 +45,20 @@ pub enum DeploymentMode {
 ///
 /// Loaded from TOML file. All fields have sensible production defaults.
 /// No service may access hardcoded values — use this struct instead.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct KronConfig {
     /// Deployment mode controlling storage and bus implementations.
     pub mode: DeploymentMode,
-    /// ClickHouse storage configuration (Standard/Enterprise).
+    /// `ClickHouse` storage configuration (Standard/Enterprise).
     pub clickhouse: ClickHouseConfig,
-    /// DuckDB storage configuration (Nano).
+    /// `DuckDB` storage configuration (Nano).
     pub duckdb: DuckDbConfig,
     /// Redpanda/Kafka bus configuration (Standard/Enterprise).
     pub redpanda: RedpandaConfig,
     /// Embedded disk-backed bus configuration (Nano tier).
     pub embedded_bus: EmbeddedBusConfig,
-    /// MinIO object storage configuration.
+    /// `MinIO` object storage configuration.
     pub minio: MinioConfig,
     /// Authentication and JWT configuration.
     pub auth: AuthConfig,
@@ -76,30 +76,10 @@ pub struct KronConfig {
     pub telemetry: TelemetryConfig,
 }
 
-impl Default for KronConfig {
-    fn default() -> Self {
-        Self {
-            mode: DeploymentMode::default(),
-            clickhouse: ClickHouseConfig::default(),
-            duckdb: DuckDbConfig::default(),
-            redpanda: RedpandaConfig::default(),
-            embedded_bus: EmbeddedBusConfig::default(),
-            minio: MinioConfig::default(),
-            auth: AuthConfig::default(),
-            agent: AgentConfig::default(),
-            collector: CollectorConfig::default(),
-            normalizer: NormalizerConfig::default(),
-            alert: AlertConfig::default(),
-            api: ApiConfig::default(),
-            telemetry: TelemetryConfig::default(),
-        }
-    }
-}
-
-/// ClickHouse connection and pool configuration.
+/// `ClickHouse` connection and pool configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClickHouseConfig {
-    /// HTTP endpoint URL (e.g. "http://localhost:8123").
+    /// HTTP endpoint URL (e.g. `<http://localhost:8123>`).
     pub url: String,
     /// Database name.
     pub database: String,
@@ -152,12 +132,12 @@ impl Default for ClickHouseConfig {
     }
 }
 
-/// DuckDB configuration for Nano tier.
+/// `DuckDB` configuration for Nano tier.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DuckDbConfig {
-    /// Path to the DuckDB database file.
+    /// Path to the `DuckDB` database file.
     pub path: PathBuf,
-    /// Maximum memory DuckDB may use in megabytes.
+    /// Maximum memory `DuckDB` may use in megabytes.
     pub memory_limit_mb: u32,
     /// Number of CPU threads for analytical queries.
     pub threads: u32,
@@ -239,10 +219,10 @@ impl Default for RedpandaConfig {
     }
 }
 
-/// MinIO object storage configuration.
+/// `MinIO` object storage configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MinioConfig {
-    /// MinIO endpoint URL.
+    /// `MinIO` endpoint URL.
     pub endpoint: String,
     /// Access key ID.
     pub access_key: String,
@@ -250,7 +230,7 @@ pub struct MinioConfig {
     pub secret_key: String,
     /// Bucket for cold-tier Parquet storage.
     pub cold_bucket: String,
-    /// Whether to require TLS for MinIO connections.
+    /// Whether to require TLS for `MinIO` connections.
     pub use_tls: bool,
 }
 
@@ -426,7 +406,7 @@ impl Default for CollectorConfig {
 /// Normalizer service configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NormalizerConfig {
-    /// Path to the GeoLite2 City MMDB file for IP enrichment.
+    /// Path to the `GeoLite2` City MMDB file for IP enrichment.
     pub geoip_db_path: PathBuf,
     /// Path to directory containing source-to-schema mapping YAML files.
     pub mappings_dir: PathBuf,
@@ -469,7 +449,7 @@ impl Default for NormalizerConfig {
 /// Alert engine and notification configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AlertConfig {
-    /// WhatsApp Business API (Twilio + Meta) configuration.
+    /// `WhatsApp` Business API (Twilio + Meta) configuration.
     pub whatsapp: WhatsAppConfig,
     /// Textlocal SMS configuration.
     pub sms: SmsConfig,
@@ -477,7 +457,7 @@ pub struct AlertConfig {
     pub smtp: SmtpConfig,
     /// Deduplication window for grouping related events, in seconds (default: 15 min).
     pub dedup_window_secs: u64,
-    /// Maximum WhatsApp notifications per hour for P3+ (non-critical) alerts.
+    /// Maximum `WhatsApp` notifications per hour for P3+ (non-critical) alerts.
     pub whatsapp_rate_limit_per_hour: u32,
 }
 
@@ -501,7 +481,7 @@ impl Default for AlertConfig {
     }
 }
 
-/// WhatsApp Business API configuration (via Twilio + Meta).
+/// `WhatsApp` Business API configuration (via Twilio + Meta).
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct WhatsAppConfig {
     /// Twilio Account SID.
@@ -510,7 +490,7 @@ pub struct WhatsAppConfig {
     pub auth_token: String,
     /// Sender phone number with country code (e.g. "+919999999999").
     pub from_number: String,
-    /// Default recipient WhatsApp number.
+    /// Default recipient `WhatsApp` number.
     pub to_number: String,
 }
 
@@ -702,6 +682,7 @@ impl KronConfig {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     use super::*;
 

@@ -126,10 +126,13 @@ fn parse_args() -> Args {
                 std::process::exit(0);
             }
             "--config" => {
-                config_path = iter.next().map(PathBuf::from).unwrap_or_else(|| {
-                    eprintln!("ERROR: --config requires a value");
-                    std::process::exit(1);
-                });
+                config_path = iter.next().map_or_else(
+                    || {
+                        eprintln!("ERROR: --config requires a value");
+                        std::process::exit(1);
+                    },
+                    PathBuf::from,
+                );
             }
             "--log-level" => {
                 log_level = iter.next().unwrap_or_else(|| {

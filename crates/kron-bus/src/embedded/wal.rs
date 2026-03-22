@@ -29,7 +29,7 @@ use crate::error::BusError;
 use crate::traits::BusMessage;
 
 /// Magic bytes identifying a KRON WAL file: ASCII "KRONWLOG".
-const WAL_MAGIC: u64 = 0x4B524F4E574C4F47;
+const WAL_MAGIC: u64 = 0x4B52_4F4E_574C_4F47;
 /// WAL format version stored in the file header.
 const WAL_VERSION: u64 = 1;
 /// Size of the WAL file header in bytes.
@@ -79,6 +79,7 @@ impl Wal {
             .read(true)
             .write(true)
             .create(true)
+            .truncate(false)
             .open(&wal_path)?;
 
         let mut wal = Self {
@@ -157,7 +158,7 @@ impl Wal {
         let mut last_valid_pos = HEADER_SIZE;
 
         loop {
-            let record_start = self.file.seek(SeekFrom::Current(0)).map_err(BusError::Io)?;
+            let record_start = self.file.stream_position().map_err(BusError::Io)?;
 
             // Read record_body_len (4 bytes).
             let mut len_buf = [0u8; 4];
@@ -166,10 +167,16 @@ impl Wal {
                 Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
                 Err(e) => return Err(BusError::Io(e)),
             }
-            let record_body_len = u32::from_le_bytes(len_buf) as u64;
+            let record_body_len = u64::from(u32::from_le_bytes(len_buf));
 
             // Read the record body.
-            let mut body = vec![0u8; record_body_len as usize];
+            let mut body = vec![
+                0u8;
+                usize::try_from(record_body_len).map_err(|e| BusError::Wal {
+                    topic: self.topic.clone(),
+                    reason: format!("record body length too large for platform: {e}"),
+                })?
+            ];
             match self.file.read_exact(&mut body) {
                 Ok(()) => {}
                 Err(_) => {
@@ -255,19 +262,33 @@ impl Wal {
         sync: bool,
     ) -> Result<u64, BusError> {
         let offset = self.next_offset;
+        // timestamp_millis() returns i64; UNIX epoch ms is always positive for current time.
+        #[allow(clippy::cast_sign_loss)]
         let timestamp_ms = Utc::now().timestamp_millis() as u64;
 
         let id_bytes = id.as_bytes();
-        let id_len = id_bytes.len() as u16;
+        let id_len = u16::try_from(id_bytes.len()).map_err(|e| BusError::Wal {
+            topic: self.topic.clone(),
+            reason: format!("message ID too long for WAL (max 65535 bytes): {e}"),
+        })?;
 
         let key_bytes = key.unwrap_or(&[]);
-        let key_len = key_bytes.len() as u16;
+        let key_len = u16::try_from(key_bytes.len()).map_err(|e| BusError::Wal {
+            topic: self.topic.clone(),
+            reason: format!("message key too long for WAL (max 65535 bytes): {e}"),
+        })?;
 
         let headers_json = serde_json::to_vec(headers)
             .map_err(|e| BusError::Serialization(format!("failed to serialize headers: {e}")))?;
-        let headers_json_len = headers_json.len() as u32;
+        let headers_json_len = u32::try_from(headers_json.len()).map_err(|e| BusError::Wal {
+            topic: self.topic.clone(),
+            reason: format!("headers JSON too large for WAL (max 4 GiB): {e}"),
+        })?;
 
-        let payload_len = payload.len() as u32;
+        let payload_len = u32::try_from(payload.len()).map_err(|e| BusError::Wal {
+            topic: self.topic.clone(),
+            reason: format!("payload too large for WAL (max 4 GiB): {e}"),
+        })?;
 
         // Build the record body (everything except record_body_len and checksum).
         let body_without_checksum_len: usize = 8  // offset
@@ -292,7 +313,10 @@ impl Wal {
         let checksum = xxh3_64(&body);
         body.extend_from_slice(&checksum.to_le_bytes());
 
-        let record_body_len = body.len() as u32;
+        let record_body_len = u32::try_from(body.len()).map_err(|e| BusError::Wal {
+            topic: self.topic.clone(),
+            reason: format!("record body too large for WAL (max 4 GiB): {e}"),
+        })?;
         let byte_pos = self.file.seek(SeekFrom::End(0))?;
 
         let mut w = BufWriter::new(&self.file);
@@ -329,9 +353,8 @@ impl Wal {
         topic: &str,
         offset: u64,
     ) -> Result<Option<BusMessage>, BusError> {
-        let byte_pos = match self.byte_pos_for_offset(offset) {
-            Some(pos) => pos,
-            None => return Ok(None),
+        let Some(byte_pos) = self.byte_pos_for_offset(offset) else {
+            return Ok(None);
         };
 
         self.file.seek(SeekFrom::Start(byte_pos))?;
@@ -342,7 +365,11 @@ impl Wal {
             Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => return Ok(None),
             Err(e) => return Err(BusError::Io(e)),
         }
-        let record_body_len = u32::from_le_bytes(len_buf) as usize;
+        let record_body_len =
+            usize::try_from(u32::from_le_bytes(len_buf)).map_err(|e| BusError::Wal {
+                topic: topic.to_owned(),
+                reason: format!("record body length too large for platform: {e}"),
+            })?;
 
         let mut body = vec![0u8; record_body_len];
         self.file.read_exact(&mut body)?;
@@ -482,7 +509,16 @@ impl Wal {
 
 /// Converts a topic name to a safe directory name by replacing dots and slashes.
 fn sanitize_topic_name(topic: &str) -> String {
-    topic.replace('.', "_").replace('/', "_").replace('\\', "_")
+    topic
+        .chars()
+        .map(|c| {
+            if matches!(c, '.' | '/' | '\\') {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect()
 }
 
 /// Deserializes a WAL record body (without the trailing checksum) into a [`BusMessage`].
@@ -555,8 +591,10 @@ fn deserialize_record_body(
         })?) as usize;
     let payload = Bytes::copy_from_slice(read_u8_slice!(payload_len));
 
-    let timestamp =
-        chrono::DateTime::from_timestamp_millis(timestamp_ms as i64).unwrap_or_else(Utc::now);
+    // timestamp_ms was stored as u64 but originates from i64 millis; values
+    // within the valid range of i64 are safe to convert back.
+    let timestamp_i64 = i64::try_from(timestamp_ms).unwrap_or(i64::MAX);
+    let timestamp = chrono::DateTime::from_timestamp_millis(timestamp_i64).unwrap_or_else(Utc::now);
 
     Ok(BusMessage {
         id,
@@ -572,6 +610,7 @@ fn deserialize_record_body(
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     use super::*;
 

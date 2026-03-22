@@ -11,26 +11,26 @@ use chrono::{DateTime, Datelike, NaiveDateTime, Utc};
 /// Each entry is `(label, strftime_format)`. Tried in order; first match wins.
 static NAIVE_FORMATS: &[(&str, &str)] = &[
     // ISO 8601 with space separator
-    ("ISO_SPACE_NS",  "%Y-%m-%d %H:%M:%S%.9f"),
-    ("ISO_SPACE_US",  "%Y-%m-%d %H:%M:%S%.6f"),
-    ("ISO_SPACE_MS",  "%Y-%m-%d %H:%M:%S%.3f"),
-    ("ISO_SPACE",     "%Y-%m-%d %H:%M:%S"),
+    ("ISO_SPACE_NS", "%Y-%m-%d %H:%M:%S%.9f"),
+    ("ISO_SPACE_US", "%Y-%m-%d %H:%M:%S%.6f"),
+    ("ISO_SPACE_MS", "%Y-%m-%d %H:%M:%S%.3f"),
+    ("ISO_SPACE", "%Y-%m-%d %H:%M:%S"),
     // ISO 8601 compact with 'T' but no timezone suffix
     ("ISO_COMPACT_T", "%Y%m%dT%H%M%S"),
     // CEF extension timestamp: "Jan 15 2024 10:30:45"
-    ("CEF_EXT",       "%b %d %Y %H:%M:%S"),
+    ("CEF_EXT", "%b %d %Y %H:%M:%S"),
     // Cisco: "Jan 15 2024 10:30:45"
-    ("CISCO",         "%b %d %Y %H:%M:%S"),
+    ("CISCO", "%b %d %Y %H:%M:%S"),
     // Common log / Apache access log: "15/Jan/2024:10:30:45"
-    ("CLF",           "%d/%b/%Y:%H:%M:%S"),
+    ("CLF", "%d/%b/%Y:%H:%M:%S"),
     // Windows MDY 12-hour: "01/15/2024 10:30:45 AM"
-    ("WINDOWS_12H",   "%m/%d/%Y %I:%M:%S %p"),
+    ("WINDOWS_12H", "%m/%d/%Y %I:%M:%S %p"),
     // Windows MDY 24-hour: "01/15/2024 22:30:45"
-    ("WINDOWS_24H",   "%m/%d/%Y %H:%M:%S"),
+    ("WINDOWS_24H", "%m/%d/%Y %H:%M:%S"),
     // SQL with fractional seconds: "2024-01-15 10:30:45.123"
-    ("SQL_FRAC",      "%Y-%m-%d %H:%M:%S%.f"),
+    ("SQL_FRAC", "%Y-%m-%d %H:%M:%S%.f"),
     // Date only (midnight assumed): "2024-01-15"
-    ("DATE_ONLY",     "%Y-%m-%d"),
+    ("DATE_ONLY", "%Y-%m-%d"),
 ];
 
 /// Parses a timestamp string into a UTC [`DateTime`].

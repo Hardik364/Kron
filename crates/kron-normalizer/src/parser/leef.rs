@@ -128,10 +128,7 @@ fn skip_delimiter_field(attrs_str: &str) -> &str {
 /// Parses LEEF attribute string into `(key, value)` string pairs.
 ///
 /// Attributes are separated by `delimiter`. Each attribute is `key=value`.
-fn parse_attributes<'a>(
-    attrs: &'a str,
-    delimiter: char,
-) -> Vec<(&'a str, &'a str)> {
+fn parse_attributes<'a>(attrs: &'a str, delimiter: char) -> Vec<(&'a str, &'a str)> {
     attrs
         .split(delimiter)
         .filter_map(|attr| {
@@ -230,7 +227,13 @@ fn map_category(cat: &str) -> Option<EventCategory> {
 /// Converts a string to a snake_case identifier component.
 fn sanitize(s: &str) -> String {
     s.chars()
-        .map(|c| if c.is_alphanumeric() { c.to_ascii_lowercase() } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 
@@ -274,6 +277,9 @@ mod tests {
     fn test_parse_leef_vendor_stored_in_fields() {
         let mut event = blank_event();
         parse_into("LEEF:1.0|IBM|QRadar|7.2|E1|\tsrc=1.2.3.4", &mut event).unwrap();
-        assert_eq!(event.fields.get("leef_vendor").map(|s| s.as_str()), Some("IBM"));
+        assert_eq!(
+            event.fields.get("leef_vendor").map(|s| s.as_str()),
+            Some("IBM")
+        );
     }
 }

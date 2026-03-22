@@ -5,12 +5,7 @@
 
 use kron_storage::AdaptiveStorage;
 
-use crate::{
-    client::CollectorClient,
-    config::CtlConfig,
-    error::CtlError,
-    output,
-};
+use crate::{client::CollectorClient, config::CtlConfig, error::CtlError, output};
 
 /// Run the health check command.
 ///

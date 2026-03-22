@@ -2,8 +2,17 @@
 //!
 //! Each converter function maps a [`RawBpfEvent`] variant to the canonical
 //! `KronEvent` schema defined in `kron-types`. Fields that cannot be determined
-//! from kernel space (GeoIP, asset criticality, MITRE tags) are left `None`
+//! from kernel space (`GeoIP`, asset criticality, MITRE tags) are left `None`
 //! and will be populated downstream by `kron-normalizer`.
+//!
+//! # Note on dead-code warnings
+//!
+//! These functions are only called from the Linux eBPF path in `agent.rs`.
+//! On non-Linux builds they appear unused; the allow below suppresses that
+//! while keeping the module compiled for `cargo check` on all platforms.
+
+// Functions here are only called from the Linux-gated eBPF path.
+#![allow(dead_code)]
 
 use std::net::Ipv4Addr;
 use std::time::{Duration, UNIX_EPOCH};
@@ -60,8 +69,7 @@ fn ktime_to_utc(ktime_ns: u64, boot_time_ns: u64) -> DateTime<Utc> {
     DateTime::<Utc>::from_timestamp(
         system_time
             .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs() as i64)
-            .unwrap_or(0),
+            .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX)),
         nanos,
     )
     .unwrap_or_else(Utc::now)
@@ -433,8 +441,8 @@ mod tests {
                 a[..4].copy_from_slice(b"curl");
                 a
             },
-            src_ip: u32::to_be(0xC0A80001), // 192.168.0.1
-            dst_ip: u32::to_be(0x08080808), // 8.8.8.8
+            src_ip: u32::to_be(0xC0A8_0001), // 192.168.0.1
+            dst_ip: u32::to_be(0x0808_0808), // 8.8.8.8
             src_port: 12345,
             dst_port: 443,
             proto: 6,

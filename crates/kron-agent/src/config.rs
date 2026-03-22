@@ -57,7 +57,7 @@ pub struct AgentConfig {
     /// Path to the CA certificate used to verify the collector (PEM).
     pub ca_path: PathBuf,
 
-    /// Arbitrary key=value labels included in every RegisterRequest.
+    /// Arbitrary key=value labels included in every [`RegisterRequest`].
     #[serde(default)]
     pub labels: HashMap<String, String>,
 

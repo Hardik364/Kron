@@ -21,6 +21,7 @@ pub struct TopicEntry {
 impl TopicEntry {
     /// Returns the minimum committed offset across all consumer groups,
     /// or 0 if no groups are registered.
+    #[must_use]
     pub fn min_committed_offset(&self) -> u64 {
         self.committed.values().copied().min().unwrap_or(0)
     }
@@ -35,26 +36,21 @@ impl TopicEntry {
     }
 
     /// Returns the committed offset (= next offset to deliver) for `group_id`.
+    #[must_use]
     pub fn committed_offset(&self, group_id: &str) -> u64 {
         self.committed.get(group_id).copied().unwrap_or(0)
     }
 }
 
 /// Registry of all open topic WALs.
+#[derive(Default)]
 pub struct TopicRegistry {
     topics: HashMap<String, TopicEntry>,
 }
 
-impl Default for TopicRegistry {
-    fn default() -> Self {
-        Self {
-            topics: HashMap::new(),
-        }
-    }
-}
-
 impl TopicRegistry {
     /// Creates an empty registry.
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }

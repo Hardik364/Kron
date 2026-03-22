@@ -48,8 +48,7 @@ pub fn parse_into(raw: &str, event: &mut KronEvent) -> Result<(), String> {
     let cef_start = raw.find("CEF:").ok_or("CEF marker not found")?;
     let cef_str = &raw[cef_start..];
 
-    let (vendor, product, event_class_id, name, severity_str, extension) =
-        split_header(cef_str)?;
+    let (vendor, product, event_class_id, name, severity_str, extension) = split_header(cef_str)?;
 
     // Stamp event type from product + class ID
     event.event_type = format!("{}_{}", sanitize(product), sanitize(event_class_id));
@@ -79,9 +78,7 @@ pub fn parse_into(raw: &str, event: &mut KronEvent) -> Result<(), String> {
 /// severity, extension).
 ///
 /// Returns `(vendor, product, event_class_id, name, severity, extension)`.
-fn split_header(
-    cef_str: &str,
-) -> Result<(&str, &str, &str, &str, &str, &str), String> {
+fn split_header(cef_str: &str) -> Result<(&str, &str, &str, &str, &str, &str), String> {
     // Up to 8 parts: CEF:ver | vendor | product | devver | classId | name | sev | ext
     let mut parts = cef_str.splitn(8, '|');
 
@@ -175,7 +172,9 @@ fn apply_field(key: &str, value: &str, event: &mut KronEvent) {
             event.hostname = Some(value.to_owned());
         }
         "dhost" | "destinationHostName" => {
-            event.fields.insert("dst_hostname".to_owned(), value.to_owned());
+            event
+                .fields
+                .insert("dst_hostname".to_owned(), value.to_owned());
         }
         "suser" | "sourceUserName" if event.user_name.is_none() => {
             event.user_name = Some(value.to_owned());
@@ -247,7 +246,13 @@ fn map_category(cat: &str) -> Option<EventCategory> {
 /// Converts a string to a snake_case event-type component.
 fn sanitize(s: &str) -> String {
     s.chars()
-        .map(|c| if c.is_alphanumeric() { c.to_ascii_lowercase() } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 
@@ -273,7 +278,9 @@ mod tests {
     #[test]
     fn test_is_cef_detects_marker() {
         assert!(is_cef("CEF:0|Vendor|Product|1.0|100|Login|5|"));
-        assert!(is_cef("<13>Jan 15 10:30:45 host CEF:0|ArcSight|Logger|1|100|Name|5|"));
+        assert!(is_cef(
+            "<13>Jan 15 10:30:45 host CEF:0|ArcSight|Logger|1|100|Name|5|"
+        ));
         assert!(!is_cef("Not a CEF message"));
         assert!(!is_cef("CEF: not-a-digit"));
     }

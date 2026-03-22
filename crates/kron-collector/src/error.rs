@@ -14,6 +14,7 @@ pub enum CollectorError {
 
     /// The gRPC server failed to start or crashed.
     #[error("gRPC server error: {0}")]
+    #[allow(dead_code)]
     Grpc(String),
 
     /// The HTTP intake server (Axum) failed to start or crashed.
@@ -30,14 +31,17 @@ pub enum CollectorError {
 
     /// TLS certificate or key could not be loaded.
     #[error("TLS error: {0}")]
+    #[allow(dead_code)]
     Tls(String),
 
     /// Agent registry operation failed (e.g. unknown agent ID).
     #[error("registry error: {0}")]
+    #[allow(dead_code)]
     Registry(String),
 
     /// A Tokio task panicked or was cancelled.
     #[error("task error: {0}")]
+    #[allow(dead_code)]
     Task(String),
 
     /// Underlying I/O error.

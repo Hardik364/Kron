@@ -100,12 +100,10 @@ impl<T: DeserializeOwned> Decoder for JsonDecoder<T> {
 // ─── Convenience type aliases ─────────────────────────────────────────────────
 
 /// Codec for the `Register` RPC: server sends `RegisterResponse`, receives `RegisterRequest`.
-pub type RegisterCodec =
-    JsonCodec<kron_types::RegisterResponse, kron_types::RegisterRequest>;
+pub type RegisterCodec = JsonCodec<kron_types::RegisterResponse, kron_types::RegisterRequest>;
 
 /// Codec for the `SendEvents` RPC: server sends `EventAck`, receives `EventBatch`.
 pub type EventBatchCodec = JsonCodec<kron_types::EventAck, kron_types::EventBatch>;
 
 /// Codec for the `Heartbeat` RPC: server sends `HeartbeatResponse`, receives `HeartbeatRequest`.
-pub type HeartbeatCodec =
-    JsonCodec<kron_types::HeartbeatResponse, kron_types::HeartbeatRequest>;
+pub type HeartbeatCodec = JsonCodec<kron_types::HeartbeatResponse, kron_types::HeartbeatRequest>;

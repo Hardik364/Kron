@@ -188,7 +188,12 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
         }
 
         Commands::Events { subcommand } => match subcommand {
-            EventsCommand::Query { tenant, from, to, limit } => {
+            EventsCommand::Query {
+                tenant,
+                from,
+                to,
+                limit,
+            } => {
                 cmd::events::run_query(
                     &config,
                     cmd::events::QueryArgs {
@@ -217,10 +222,16 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             AgentsCommand::List => {
                 cmd::agents::run_list(&config).await?;
             }
-            AgentsCommand::Create { hostname, tenant_id } => {
+            AgentsCommand::Create {
+                hostname,
+                tenant_id,
+            } => {
                 cmd::agents::run_create(
                     &config,
-                    cmd::agents::CreateArgs { hostname, tenant_id },
+                    cmd::agents::CreateArgs {
+                        hostname,
+                        tenant_id,
+                    },
                 )
                 .await?;
             }

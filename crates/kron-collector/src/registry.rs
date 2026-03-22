@@ -34,6 +34,7 @@ pub struct AgentRecord {
     /// Arbitrary key=value labels configured in agent.toml.
     pub labels: HashMap<String, String>,
     /// UTC timestamp when this agent first registered.
+    #[allow(dead_code)]
     pub registered_at: DateTime<Utc>,
     /// UTC timestamp of the most recent heartbeat (or registration).
     pub last_heartbeat_at: DateTime<Utc>,
@@ -98,7 +99,7 @@ impl AgentRateLimiter {
 /// Held behind `Arc<RwLock<AgentRegistry>>` and shared across gRPC handlers,
 /// the dark-agent monitor, and the metrics reporter.
 pub struct AgentRegistry {
-    /// Primary map: agent_id → record.
+    /// Primary map: `agent_id` → record.
     agents: HashMap<AgentId, AgentRecord>,
     /// Per-agent rate limiters. Separate from the record so the read lock
     /// on `agents` doesn't block rate-limit checks.
@@ -124,11 +125,7 @@ impl AgentRegistry {
     /// updated and the existing [`AgentId`] is returned (idempotent re-registration).
     ///
     /// Returns `(agent_id, is_new)`.
-    pub fn register(
-        &mut self,
-        req: &RegisterRequest,
-        tenant_id: TenantId,
-    ) -> (AgentId, bool) {
+    pub fn register(&mut self, req: &RegisterRequest, tenant_id: TenantId) -> (AgentId, bool) {
         // Check if this hostname is already registered.
         let existing = self.agents.values().find(|r| r.hostname == req.hostname);
         if let Some(record) = existing {
@@ -137,10 +134,10 @@ impl AgentRegistry {
             if let Some(r) = self.agents.get_mut(&agent_id) {
                 r.last_heartbeat_at = Utc::now();
                 r.is_dark = false;
-                r.agent_version = req.agent_version.clone();
-                r.host_ip = req.host_ip.clone();
-                r.os_name = req.os_name.clone();
-                r.labels = req.labels.clone();
+                req.agent_version.clone_into(&mut r.agent_version);
+                req.host_ip.clone_into(&mut r.host_ip);
+                req.os_name.clone_into(&mut r.os_name);
+                req.labels.clone_into(&mut r.labels);
             }
             return (agent_id, false);
         }
@@ -208,6 +205,7 @@ impl AgentRegistry {
 
     /// Returns a reference to the agent record, or `None` if not found.
     #[must_use]
+    #[allow(dead_code)]
     pub fn get(&self, agent_id: &AgentId) -> Option<&AgentRecord> {
         self.agents.get(agent_id)
     }

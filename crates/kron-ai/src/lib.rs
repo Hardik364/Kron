@@ -6,9 +6,9 @@
 //! # Models
 //!
 //! - Anomaly scorer: Isolation Forest ONNX — `KronEvent` → score 0–1
-//! - UEBA classifier: XGBoost ONNX — deviation features → probability 0–1
+//! - UEBA classifier: `XGBoost` ONNX — deviation features → probability 0–1
 //! - Beaconing detector: FFT ONNX — inter-arrival times → score 0–1
-//! - Exfil scorer: XGBoost ONNX — volume features → probability 0–1
+//! - Exfil scorer: `XGBoost` ONNX — volume features → probability 0–1
 //! - Multilingual summarizer: T5 ONNX 8MB (EN, HI)
 //! - Mistral 7B: llama.cpp CPU (Standard), candle CUDA (Enterprise)
 //!

@@ -111,4 +111,5 @@ pub type HeartbeatCodec = JsonCodec<kron_types::HeartbeatRequest, kron_types::He
 pub type RegisterCodec = JsonCodec<kron_types::RegisterRequest, kron_types::RegisterResponse>;
 
 /// The `Content-Type` header value required by gRPC for JSON payloads.
+#[allow(dead_code)]
 pub const GRPC_JSON_CONTENT_TYPE: &str = "application/grpc+json";

@@ -14,8 +14,8 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 use chrono::Utc;
-use kron_types::{KronEvent, TenantContext, TenantId};
 use kron_storage::StorageEngine;
+use kron_types::{KronEvent, TenantContext, TenantId};
 
 use crate::enrich::Enricher;
 use crate::error::NormalizerError;
@@ -58,10 +58,7 @@ impl Pipeline {
     ///
     /// Returns `Err` only for unrecoverable failures (deserialization, bus
     /// publish). Storage errors are logged and treated as non-fatal.
-    pub async fn process(
-        &self,
-        payload: Bytes,
-    ) -> Result<(), NormalizerError> {
+    pub async fn process(&self, payload: Bytes) -> Result<(), NormalizerError> {
         let start = std::time::Instant::now();
         metrics::record_raw_received();
 
@@ -139,12 +136,7 @@ impl Pipeline {
         let key = Bytes::from(tenant_id.to_string());
 
         self.producer
-            .send(
-                &topic,
-                Some(key),
-                payload,
-                std::collections::HashMap::new(),
-            )
+            .send(&topic, Some(key), payload, std::collections::HashMap::new())
             .await
             .map_err(NormalizerError::Bus)?;
 

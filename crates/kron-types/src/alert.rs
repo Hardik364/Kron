@@ -2,7 +2,7 @@
 //!
 //! A `KronAlert` is produced by the stream processor when a detection fires.
 //! It aggregates multiple related events into a single, deduplicated alert
-//! that is written to ClickHouse and dispatched for notification.
+//! that is written to `ClickHouse` and dispatched for notification.
 //!
 //! Alerts are deduplicated within 15-minute windows: multiple events matching
 //! the same rule on the same asset produce one `KronAlert`, not many.
@@ -19,6 +19,7 @@ use crate::ids::{AlertId, RuleId, TenantId};
 /// Maps 1:1 to a row in the `alerts` ClickHouse/DuckDB table.
 /// See `docs/Database.md` for the full schema.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct KronAlert {
     // --- Identity ---
     /// Unique alert identifier.
@@ -117,7 +118,7 @@ pub struct KronAlert {
     pub dpdp_applicable: bool,
 
     // --- Notifications ---
-    /// Whether a WhatsApp notification was sent for this alert.
+    /// Whether a `WhatsApp` notification was sent for this alert.
     pub whatsapp_sent: bool,
     /// Whether an SMS notification was sent.
     pub sms_sent: bool,
@@ -160,6 +161,7 @@ impl KronAlert {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
 

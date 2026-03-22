@@ -12,6 +12,17 @@
 //!   does not need to handle partial reads.
 //! - Strings are fixed-length C arrays; unused bytes are zero-padded.
 //! - IP addresses are stored as network-byte-order (big-endian) `u32`.
+//!
+//! # Note on dead-code warnings
+//!
+//! These types are only constructed by the Linux eBPF subsystem at runtime.
+//! On non-Linux platforms they appear unused; the `#[allow(dead_code)]`
+//! attributes below suppress those warnings while keeping the types
+//! available for `cargo check` on all platforms.
+
+// All items here are only live on Linux (eBPF ring buffer), but we compile
+// them unconditionally so `cargo check` catches type errors everywhere.
+#![allow(dead_code)]
 
 /// Maximum length of a path string in eBPF events (including NUL terminator).
 pub const PATH_LEN: usize = 256;

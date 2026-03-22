@@ -5,14 +5,14 @@
 //! - [`SyslogUdpReceiver`] — UDP/514. Fire-and-forget; no delivery guarantee.
 //! - [`SyslogTcpReceiver`] — TCP/6514. Connection-oriented; handles disconnects.
 //!
-//! # Syslog → KronEvent mapping
+//! # Syslog → `KronEvent` mapping
 //!
-//! | Syslog field | KronEvent field |
+//! | Syslog field | `KronEvent` field |
 //! |---|---|
 //! | HOSTNAME | `hostname` |
 //! | PRI severity | `severity` (mapped via [`syslog_severity_to_kron`]) |
 //! | Full message | `raw_message` |
-//! | Parsed APPNAME / TAG | `process_name` |
+//! | Parsed `APPNAME` / TAG | `process_name` |
 //! | Timestamp | `ts` (UTC) |
 //! | Source IP | `src_ip` |
 //!
@@ -69,12 +69,13 @@ impl SyslogUdpReceiver {
     /// # Errors
     ///
     /// Returns [`crate::error::CollectorError::Syslog`] if the socket cannot be bound.
-    pub async fn run(self, mut shutdown: broadcast::Receiver<()>) -> Result<(), crate::error::CollectorError> {
-        let socket = UdpSocket::bind(self.bind_addr)
-            .await
-            .map_err(|e| crate::error::CollectorError::Syslog(
-                format!("UDP bind {}: {e}", self.bind_addr)
-            ))?;
+    pub async fn run(
+        self,
+        mut shutdown: broadcast::Receiver<()>,
+    ) -> Result<(), crate::error::CollectorError> {
+        let socket = UdpSocket::bind(self.bind_addr).await.map_err(|e| {
+            crate::error::CollectorError::Syslog(format!("UDP bind {}: {e}", self.bind_addr))
+        })?;
 
         tracing::info!(addr = %self.bind_addr, "Syslog UDP receiver started");
 
@@ -163,12 +164,13 @@ impl SyslogTcpReceiver {
     /// # Errors
     ///
     /// Returns [`crate::error::CollectorError::Syslog`] if the listener cannot be bound.
-    pub async fn run(self, mut shutdown: broadcast::Receiver<()>) -> Result<(), crate::error::CollectorError> {
-        let listener = TcpListener::bind(self.bind_addr)
-            .await
-            .map_err(|e| crate::error::CollectorError::Syslog(
-                format!("TCP bind {}: {e}", self.bind_addr)
-            ))?;
+    pub async fn run(
+        self,
+        mut shutdown: broadcast::Receiver<()>,
+    ) -> Result<(), crate::error::CollectorError> {
+        let listener = TcpListener::bind(self.bind_addr).await.map_err(|e| {
+            crate::error::CollectorError::Syslog(format!("TCP bind {}: {e}", self.bind_addr))
+        })?;
 
         tracing::info!(addr = %self.bind_addr, "Syslog TCP receiver started");
 
@@ -245,6 +247,7 @@ struct SyslogFields {
     priority: u8,
     hostname: String,
     app_name: String,
+    #[allow(dead_code)]
     message: String,
     ts: chrono::DateTime<Utc>,
 }
@@ -304,12 +307,7 @@ fn parse_syslog_fields(raw: &str) -> SyslogFields {
     // RFC 3164: `<PRI>MONTH DD HH:MM:SS HOSTNAME TAG: MSG`
     // Detect by checking if the first token after priority is a digit (version).
     let trimmed = rest.trim_start();
-    if trimmed
-        .chars()
-        .next()
-        .map(|c| c.is_ascii_digit())
-        .unwrap_or(false)
-    {
+    if trimmed.chars().next().is_some_and(|c| c.is_ascii_digit()) {
         parse_5424(priority, trimmed)
     } else {
         parse_3164(priority, trimmed)
@@ -347,8 +345,7 @@ fn parse_5424(priority: u8, rest: &str) -> SyslogFields {
     let message = tokens.next().unwrap_or("").to_owned();
 
     let ts = chrono::DateTime::parse_from_rfc3339(ts_str)
-        .map(|dt| dt.with_timezone(&Utc))
-        .unwrap_or_else(|_| Utc::now());
+        .map_or_else(|_| Utc::now(), |dt| dt.with_timezone(&Utc));
 
     SyslogFields {
         priority,
@@ -374,8 +371,8 @@ fn parse_3164(priority: u8, rest: &str) -> SyslogFields {
 
     let mut parts = after_ts.splitn(3, ' ');
     let hostname = parts.next().unwrap_or("").to_owned();
-    let tag_and_msg = parts.next().map(|s| s.to_owned()).unwrap_or_default()
-        + parts.next().unwrap_or("");
+    let tag_and_msg =
+        parts.next().map(str::to_owned).unwrap_or_default() + parts.next().unwrap_or("");
     let (app_name, message) = split_tag(tag_and_msg.trim());
 
     SyslogFields {
@@ -399,24 +396,28 @@ fn parse_3164_timestamp(ts_str: &str) -> chrono::DateTime<Utc> {
         .unwrap_or(now)
 }
 
-/// Splits a syslog TAG field into (app_name, message).
+/// Splits a syslog TAG field into (`app_name`, `message`).
 ///
 /// RFC 3164 TAG: `"sshd[1234]: message"` → `("sshd", "message")`.
 fn split_tag(tag_and_msg: &str) -> (String, String) {
     // Tag ends at first '[', ':', or space.
     let end = tag_and_msg
-        .find(|c: char| c == '[' || c == ':' || c == ' ')
+        .find(['[', ':', ' '])
         .unwrap_or(tag_and_msg.len());
     let app = tag_and_msg[..end].to_owned();
     let msg = tag_and_msg[end..]
-        .trim_start_matches(|c: char| c == '[' || c == ']' || c == ':' || c == ' ')
+        .trim_start_matches(['[', ']', ':', ' '])
         .to_owned();
     (app, msg)
 }
 
 /// Returns an empty string for RFC 5424 nil-value (`-`).
 fn nilval_or(s: String) -> String {
-    if s == "-" { String::new() } else { s }
+    if s == "-" {
+        String::new()
+    } else {
+        s
+    }
 }
 
 // ─── Severity mapping ─────────────────────────────────────────────────────────
@@ -435,7 +436,7 @@ fn nilval_or(s: String) -> String {
 /// | 7 Debug | Info |
 fn syslog_severity_to_kron(sev: u8) -> Severity {
     match sev {
-        0 | 1 | 2 => Severity::Critical,
+        0..=2 => Severity::Critical,
         3 => Severity::High,
         4 => Severity::Medium,
         5 => Severity::Low,

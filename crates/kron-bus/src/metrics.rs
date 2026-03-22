@@ -59,12 +59,15 @@ pub fn record_dead_letter(source_topic: &str) {
 ///
 /// This should be updated after every commit and on consumer startup.
 pub fn set_consumer_lag(topic: &str, group_id: &str, lag: u64) {
+    // Precision loss is acceptable: gauge display does not require exact integer precision.
+    #[allow(clippy::cast_precision_loss)]
+    let lag_f64 = lag as f64;
     gauge!(
         "kron_bus_consumer_lag_messages",
         "topic" => topic.to_owned(),
         "group_id" => group_id.to_owned()
     )
-    .set(lag as f64);
+    .set(lag_f64);
 }
 
 /// Records how long (in milliseconds) a producer send operation took end-to-end.

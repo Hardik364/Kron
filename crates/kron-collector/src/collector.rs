@@ -20,7 +20,7 @@ use tokio::sync::RwLock;
 
 use crate::error::CollectorError;
 use crate::grpc::{CollectorGrpcService, GrpcState};
-use crate::http_intake::{HttpState, run_http_server};
+use crate::http_intake::{run_http_server, HttpState};
 use crate::metrics;
 use crate::registry::AgentRegistry;
 use crate::shutdown::ShutdownHandle;
@@ -67,21 +67,21 @@ impl Collector {
         } else {
             let t = uuid::Uuid::from_str(&cfg.default_tenant_id)
                 .map(TenantId::from_uuid)
-                .map_err(|e| CollectorError::Config(
-                    format!("invalid default_tenant_id '{}': {e}", cfg.default_tenant_id)
-                ))?;
+                .map_err(|e| {
+                    CollectorError::Config(format!(
+                        "invalid default_tenant_id '{}': {e}",
+                        cfg.default_tenant_id
+                    ))
+                })?;
             Some(t)
         };
 
         // Connect to the message bus (embedded or Redpanda based on mode).
-        let bus = AdaptiveBus::new(self.config.clone())
-            .map_err(CollectorError::Bus)?;
-        let producer = Arc::new(bus.new_producer()
-            .map_err(CollectorError::Bus)?) as Arc<dyn kron_bus::traits::BusProducer>;
+        let bus = AdaptiveBus::new(self.config.clone()).map_err(CollectorError::Bus)?;
+        let producer = Arc::new(bus.new_producer().map_err(CollectorError::Bus)?)
+            as Arc<dyn kron_bus::traits::BusProducer>;
 
-        let registry = Arc::new(RwLock::new(
-            AgentRegistry::new(cfg.max_eps_per_agent)
-        ));
+        let registry = Arc::new(RwLock::new(AgentRegistry::new(cfg.max_eps_per_agent)));
 
         let grpc_state = Arc::new(GrpcState {
             registry: Arc::clone(&registry),
@@ -101,10 +101,8 @@ impl Collector {
         let http_handle = self.spawn_http_server(http_state)?;
         let udp_handle = self.spawn_syslog_udp(Arc::clone(&producer), default_tenant_id)?;
         let tcp_handle = self.spawn_syslog_tcp(Arc::clone(&producer), default_tenant_id)?;
-        let monitor_handle = self.spawn_dark_agent_monitor(
-            Arc::clone(&registry),
-            cfg.agent_heartbeat_timeout(),
-        );
+        let monitor_handle =
+            self.spawn_dark_agent_monitor(Arc::clone(&registry), cfg.agent_heartbeat_timeout());
 
         tracing::info!("Collector started — all subsystems running");
 
@@ -142,9 +140,9 @@ impl Collector {
         if addr.is_empty() {
             return Ok(());
         }
-        let addr_parsed: std::net::SocketAddr = addr.parse().map_err(|e| {
-            CollectorError::Config(format!("invalid metrics_addr '{addr}': {e}"))
-        })?;
+        let addr_parsed: std::net::SocketAddr = addr
+            .parse()
+            .map_err(|e| CollectorError::Config(format!("invalid metrics_addr '{addr}': {e}")))?;
         metrics_exporter_prometheus::PrometheusBuilder::new()
             .with_http_listener(addr_parsed)
             .install()
@@ -176,11 +174,7 @@ impl Collector {
             let svc = CollectorGrpcService::new(state);
 
             // Load TLS identity and CA cert for mTLS.
-            let tls_result = load_server_tls(
-                &tls_cert_path,
-                &tls_key_path,
-                &tls_ca_path,
-            );
+            let tls_result = load_server_tls(&tls_cert_path, &tls_key_path, &tls_ca_path);
 
             let mut server_builder = match tls_result {
                 Ok(tls_cfg) => {
@@ -286,9 +280,7 @@ impl Collector {
         })?;
 
         let Some(tid) = tenant_id else {
-            tracing::warn!(
-                "default_tenant_id not set; syslog TCP receiver disabled."
-            );
+            tracing::warn!("default_tenant_id not set; syslog TCP receiver disabled.");
             return Ok(tokio::spawn(async {}));
         };
 
@@ -319,7 +311,7 @@ impl Collector {
             let check_interval = Duration::from_secs(30);
             loop {
                 tokio::select! {
-                    _ = tokio::time::sleep(check_interval) => {
+                    () = tokio::time::sleep(check_interval) => {
                         run_dark_check(&registry, timeout).await;
                     }
                     _ = shutdown_rx.recv() => {

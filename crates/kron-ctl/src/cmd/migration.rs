@@ -44,11 +44,21 @@ pub fn run_status(config: &CtlConfig) -> Result<(), CtlError> {
     // Choose the migrations dir and backend label from the deployment mode.
     let (migrations_dir, backend) = match config.inner.mode {
         kron_types::DeploymentMode::Nano => (
-            config.inner.duckdb.migrations_dir.to_string_lossy().to_string(),
+            config
+                .inner
+                .duckdb
+                .migrations_dir
+                .to_string_lossy()
+                .to_string(),
             "duckdb",
         ),
         _ => (
-            config.inner.clickhouse.migrations_dir.to_string_lossy().to_string(),
+            config
+                .inner
+                .clickhouse
+                .migrations_dir
+                .to_string_lossy()
+                .to_string(),
             "clickhouse",
         ),
     };
@@ -57,8 +67,8 @@ pub fn run_status(config: &CtlConfig) -> Result<(), CtlError> {
     println!("  Backend   : {backend}");
     println!();
 
-    let migrations = load_migrations(&migrations_dir, backend)
-        .map_err(|e| CtlError::Migration(e))?;
+    let migrations =
+        load_migrations(&migrations_dir, backend).map_err(|e| CtlError::Migration(e))?;
 
     if migrations.is_empty() {
         println!("  No migration files found in {migrations_dir}");

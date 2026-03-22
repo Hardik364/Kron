@@ -85,18 +85,14 @@ fn main() -> ExitCode {
 }
 
 /// Builds all subsystems and runs the normalizer until shutdown.
-async fn run(
-    config: KronConfig,
-    shutdown: ShutdownHandle,
-) -> Result<(), error::NormalizerError> {
+async fn run(config: KronConfig, shutdown: ShutdownHandle) -> Result<(), error::NormalizerError> {
     let cfg = &config.normalizer;
 
     // Optional Prometheus metrics exporter.
     start_metrics_exporter(&cfg.metrics_addr)?;
 
     // GeoIP enrichment (graceful if MMDB absent).
-    let geoip = GeoIpLookup::open(&cfg.geoip_db_path)
-        .map_err(error::NormalizerError::GeoIp)?;
+    let geoip = GeoIpLookup::open(&cfg.geoip_db_path).map_err(error::NormalizerError::GeoIp)?;
 
     // Asset cache (always empty at startup in Phase 1.6).
     let assets = AssetCache::new(cfg.asset_cache_ttl(), cfg.asset_cache_size);
@@ -213,4 +209,3 @@ fn init_tracing(log_level: &str) {
         .with_span_list(true)
         .init();
 }
-

@@ -16,10 +16,12 @@ pub enum AgentError {
     ///
     /// Only emitted on Linux; gated by `#[cfg(target_os = "linux")]`.
     #[error("eBPF error: {0}")]
+    #[allow(dead_code)]
     Ebpf(String),
 
     /// The eBPF ring buffer produced a record that could not be decoded.
     #[error("ring buffer decode error: {0}")]
+    #[allow(dead_code)]
     RingBufferDecode(String),
 
     /// The collector gRPC endpoint is unreachable or returned an error.
@@ -46,6 +48,7 @@ pub enum AgentError {
     ///
     /// The agent logs a warning and recommends agentless collection.
     #[error("unsupported kernel {running}: minimum required is {minimum}")]
+    #[allow(dead_code)]
     KernelTooOld {
         /// Detected kernel version string.
         running: String,

@@ -50,7 +50,7 @@ impl ShutdownHandle {
 async fn wait_for_signal() {
     #[cfg(unix)]
     {
-        use tokio::signal::unix::{SignalKind, signal};
+        use tokio::signal::unix::{signal, SignalKind};
         let mut sigterm =
             signal(SignalKind::terminate()).expect("Failed to install SIGTERM handler");
         tokio::select! {

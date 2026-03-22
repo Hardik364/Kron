@@ -37,7 +37,10 @@ impl CtlConfig {
             derive_base_url(&inner.collector.http_addr)
         };
 
-        Ok(Self { inner, collector_base_url })
+        Ok(Self {
+            inner,
+            collector_base_url,
+        })
     }
 }
 

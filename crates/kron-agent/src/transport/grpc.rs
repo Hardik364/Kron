@@ -33,7 +33,11 @@ pub struct GrpcTransport {
     client: Grpc<Channel>,
     connected: bool,
     endpoint: String,
+    /// Stored for use by [`reconnect`] to re-establish the mTLS channel.
+    #[allow(dead_code)]
     identity: Identity,
+    /// Stored for use by [`reconnect`] to re-establish the mTLS channel.
+    #[allow(dead_code)]
     ca_cert: Certificate,
 }
 
@@ -73,6 +77,7 @@ impl GrpcTransport {
     /// # Errors
     ///
     /// Returns [`AgentError::Transport`] if the reconnect fails.
+    #[allow(dead_code)]
     pub async fn reconnect(&mut self) -> Result<(), AgentError> {
         self.client =
             build_channel(&self.endpoint, self.identity.clone(), self.ca_cert.clone()).await?;

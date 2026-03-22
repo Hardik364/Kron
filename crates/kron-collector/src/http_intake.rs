@@ -324,10 +324,8 @@ async fn handle_agents_list(State(state): State<HttpState>) -> impl IntoResponse
 /// Verifies the `Authorization: Bearer <token>` header against the configured token.
 ///
 /// Returns `Ok(())` if the token matches, `Err(response)` with a 401 status otherwise.
-fn verify_bearer(
-    headers: &HeaderMap,
-    expected: &str,
-) -> Result<(), axum::response::Response> {
+#[allow(clippy::result_large_err)]
+fn verify_bearer(headers: &HeaderMap, expected: &str) -> Result<(), axum::response::Response> {
     if expected.is_empty() {
         // Auth disabled — no token configured.
         return Ok(());

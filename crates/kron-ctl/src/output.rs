@@ -76,7 +76,11 @@ impl Table {
         println!("{line}");
 
         // Separator.
-        let sep: String = widths.iter().map(|w| "─".repeat(*w)).collect::<Vec<_>>().join("  ");
+        let sep: String = widths
+            .iter()
+            .map(|w| "─".repeat(*w))
+            .collect::<Vec<_>>()
+            .join("  ");
         println!("{sep}");
 
         // Data rows.

@@ -34,6 +34,7 @@ pub mod stub {
     /// Raw eBPF event variant — exists only to satisfy type references on
     /// non-Linux builds.
     #[derive(Debug)]
+    #[allow(dead_code)]
     pub enum RawBpfEvent {}
 }
 

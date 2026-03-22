@@ -33,12 +33,9 @@ pub fn is_json_object(raw: &str) -> bool {
 ///
 /// Returns `Err` if `raw` is not valid JSON or is not a JSON object.
 pub fn parse_into(raw: &str, event: &mut KronEvent) -> Result<(), String> {
-    let value: Value =
-        serde_json::from_str(raw).map_err(|e| format!("JSON parse error: {e}"))?;
+    let value: Value = serde_json::from_str(raw).map_err(|e| format!("JSON parse error: {e}"))?;
 
-    let obj = value
-        .as_object()
-        .ok_or("JSON value is not an object")?;
+    let obj = value.as_object().ok_or("JSON value is not an object")?;
 
     for (key, val) in obj {
         apply_field(key, val, event);
@@ -195,9 +192,7 @@ fn parse_severity(val: &Value) -> Severity {
             "low" | "minor" => Severity::Low,
             "medium" | "moderate" | "warning" | "warn" => Severity::Medium,
             "high" | "major" | "error" | "err" => Severity::High,
-            "critical" | "crit" | "fatal" | "emergency" | "emerg" | "alert" => {
-                Severity::Critical
-            }
+            "critical" | "crit" | "fatal" | "emergency" | "emerg" | "alert" => Severity::Critical,
             _ => Severity::Info,
         },
         _ => Severity::Info,

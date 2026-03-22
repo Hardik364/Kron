@@ -63,4 +63,5 @@ pub trait CollectorTransport: Send + Sync {
 }
 
 /// The gRPC service path prefix used for all collector RPCs.
+#[allow(dead_code)]
 pub const COLLECTOR_SERVICE_PATH: &str = "/kron.collector.v1.CollectorService";

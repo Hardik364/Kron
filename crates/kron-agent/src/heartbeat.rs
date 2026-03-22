@@ -20,7 +20,6 @@ use tokio::sync::{broadcast, Mutex};
 
 use kron_types::{AgentId, HeartbeatRequest};
 
-use crate::error::AgentError;
 use crate::metrics;
 use crate::transport::CollectorTransport;
 

@@ -66,9 +66,77 @@ impl Agent {
 
         self.start_metrics_exporter()?;
 
+        // tenant_id and hostname are used only on Linux (eBPF path).
+        #[cfg_attr(not(target_os = "linux"), allow(unused_variables))]
+        let (transport, agent_id, tenant_id, hostname, disk_buffer) =
+            self.connect_and_register().await?;
+
+        let transport = Arc::new(Mutex::new(transport));
+        let heartbeat_state = Arc::new(Mutex::new(HeartbeatState {
+            agent_id,
+            ring_buffer_utilization_pct: 0,
+            events_dropped_since_last: 0,
+            disk_buffer_depth: 0,
+        }));
+        let mut disk_buffer = disk_buffer;
+
+        let _heartbeat_task = spawn_heartbeat_task(
+            Arc::clone(&heartbeat_state),
+            Arc::clone(&transport),
+            self.shutdown.subscribe(),
+        );
+
+        // Channel between ring buffer reader and batch assembler.
+        // event_tx is only used on Linux (moved into eBPF converter task below).
+        #[cfg_attr(not(target_os = "linux"), allow(unused_variables))]
+        let (event_tx, mut event_rx) = mpsc::channel::<KronEvent>(EVENT_CHANNEL_CAPACITY);
+
+        // Load eBPF programs on Linux only.
+        #[cfg(target_os = "linux")]
+        self.start_ebpf_converter(tenant_id, agent_id, &hostname, event_tx)?;
+
+        // Drain leftover disk buffer events from a prior offline period.
+        if !disk_buffer.is_empty() {
+            tracing::info!("Draining disk buffer from previous offline period");
+            drain_disk_buffer(
+                &mut disk_buffer,
+                &mut 0u64,
+                agent_id,
+                &mut *transport.lock().await,
+                &heartbeat_state,
+            )
+            .await
+            .unwrap_or_else(|e| tracing::warn!(error = %e, "Initial disk buffer drain failed"));
+        }
+
+        run_event_loop(
+            &mut event_rx,
+            &transport,
+            &heartbeat_state,
+            &mut disk_buffer,
+            agent_id,
+            &self.config,
+            self.shutdown.subscribe(),
+        )
+        .await?;
+
+        tracing::info!("Agent shut down cleanly");
+        Ok(())
+    }
+
+    /// Connects to the collector, registers, and opens the disk buffer.
+    ///
+    /// Returns `(transport, agent_id, tenant_id, hostname, disk_buffer)`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AgentError`] on connection, TLS, or registration failure.
+    async fn connect_and_register(
+        &self,
+    ) -> Result<(GrpcTransport, AgentId, TenantId, String, DiskBuffer), AgentError> {
         // Open disk buffer on a blocking thread.
         let buffer_config = self.config.buffer.clone();
-        let mut disk_buffer = tokio::task::spawn_blocking(move || DiskBuffer::open(buffer_config))
+        let disk_buffer = tokio::task::spawn_blocking(move || DiskBuffer::open(buffer_config))
             .await
             .map_err(|e| AgentError::Task(format!("disk buffer open panicked: {e}")))?
             .map_err(|e| AgentError::Buffer(e.to_string()))?;
@@ -93,10 +161,6 @@ impl Agent {
 
         let agent_id: AgentId = reg_resp.agent_id;
         let tenant_id: TenantId = reg_resp.tenant_id;
-        let _collector_id_str = agent_id.to_string();
-        // On Linux, collector_id is passed into the eBPF event converter below.
-        #[cfg(target_os = "linux")]
-        let collector_id = _collector_id_str.clone();
 
         tracing::info!(
             agent_id = %agent_id,
@@ -104,141 +168,38 @@ impl Agent {
             "Agent registered with collector"
         );
 
-        let transport = Arc::new(Mutex::new(transport));
+        Ok((transport, agent_id, tenant_id, hostname, disk_buffer))
+    }
 
-        let heartbeat_state = Arc::new(Mutex::new(HeartbeatState {
-            agent_id,
-            ring_buffer_utilization_pct: 0,
-            events_dropped_since_last: 0,
-            disk_buffer_depth: 0,
-        }));
+    /// Loads eBPF programs and spawns the event converter task (Linux only).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AgentError::Ebpf`] if any eBPF program fails to load.
+    #[cfg(target_os = "linux")]
+    fn start_ebpf_converter(
+        &self,
+        tenant_id: TenantId,
+        agent_id: AgentId,
+        hostname: &str,
+        event_tx: mpsc::Sender<KronEvent>,
+    ) -> Result<(), AgentError> {
+        let boot_time_ns = crate::events::read_boot_time_ns().unwrap_or_else(|e| {
+            tracing::warn!(
+                error = %e,
+                "Cannot read boot time from /proc/stat; timestamps approximate"
+            );
+            0
+        });
 
-        let _heartbeat_task = spawn_heartbeat_task(
-            Arc::clone(&heartbeat_state),
-            Arc::clone(&transport),
-            self.shutdown.subscribe(),
-        );
+        let (raw_tx, raw_rx) = mpsc::channel::<RawBpfEvent>(EVENT_CHANNEL_CAPACITY);
+        let _ebpf = EbpfManager::load(&self.config.ebpf, raw_tx)?;
 
-        // Channel between ring buffer reader and batch assembler.
-        // event_tx is only used on Linux (moved into eBPF converter task below).
-        #[cfg_attr(not(target_os = "linux"), allow(unused_variables))]
-        let (event_tx, mut event_rx) = mpsc::channel::<KronEvent>(EVENT_CHANNEL_CAPACITY);
-
-        // Load eBPF programs on Linux only.
-        #[cfg(target_os = "linux")]
-        {
-            let boot_time_ns = crate::events::read_boot_time_ns().unwrap_or_else(|e| {
-                tracing::warn!(
-                    error = %e,
-                    "Cannot read boot time from /proc/stat; timestamps approximate"
-                );
-                0
-            });
-
-            let (raw_tx, raw_rx) = mpsc::channel::<RawBpfEvent>(EVENT_CHANNEL_CAPACITY);
-            let _ebpf = EbpfManager::load(&self.config.ebpf, raw_tx)?;
-
-            let t_id = tenant_id;
-            let c_id = collector_id.clone();
-            let h = hostname.clone();
-            tokio::spawn(async move {
-                run_event_converter(raw_rx, event_tx, t_id, c_id, h, boot_time_ns).await;
-            });
-        }
-
-        // Drain leftover disk buffer events from a prior offline period.
-        if !disk_buffer.is_empty() {
-            tracing::info!("Draining disk buffer from previous offline period");
-            drain_disk_buffer(
-                &mut disk_buffer,
-                &mut 0u64,
-                agent_id,
-                &mut *transport.lock().await,
-                &heartbeat_state,
-            )
-            .await
-            .unwrap_or_else(|e| tracing::warn!(error = %e, "Initial disk buffer drain failed"));
-        }
-
-        // Main loop — collect events into batches and send.
-        let mut shutdown_rx = self.shutdown.subscribe();
-        let mut sequence: u64 = 0;
-        let mut batch: Vec<KronEvent> = Vec::with_capacity(self.config.ebpf.max_batch_size);
-        let max_batch = self.config.ebpf.max_batch_size;
-        let batch_delay = self.config.ebpf.max_batch_delay();
-        let mut batch_deadline = Instant::now() + batch_delay;
-
-        loop {
-            tokio::select! {
-                maybe_event = event_rx.recv() => {
-                    match maybe_event {
-                        Some(event) => {
-                            metrics::record_events_captured(&event.event_type, 1);
-                            batch.push(event);
-                            if batch.len() >= max_batch {
-                                flush_batch(
-                                    &mut batch,
-                                    &mut sequence,
-                                    agent_id,
-                                    &mut *transport.lock().await,
-                                    &mut disk_buffer,
-                                    &heartbeat_state,
-                                ).await?;
-                                batch_deadline = Instant::now() + batch_delay;
-                            }
-                        }
-                        None => {
-                            tracing::warn!("Event channel closed — eBPF reader terminated");
-                            break;
-                        }
-                    }
-                }
-
-                _ = tokio::time::sleep_until(batch_deadline) => {
-                    if !batch.is_empty() {
-                        flush_batch(
-                            &mut batch,
-                            &mut sequence,
-                            agent_id,
-                            &mut *transport.lock().await,
-                            &mut disk_buffer,
-                            &heartbeat_state,
-                        ).await?;
-                    }
-                    drain_disk_buffer(
-                        &mut disk_buffer,
-                        &mut sequence,
-                        agent_id,
-                        &mut *transport.lock().await,
-                        &heartbeat_state,
-                    ).await.unwrap_or_else(|e| {
-                        tracing::warn!(error = %e, "Disk buffer drain failed");
-                    });
-                    batch_deadline = Instant::now() + batch_delay;
-                }
-
-                _ = shutdown_rx.recv() => {
-                    tracing::info!("Shutdown signal — flushing remaining events");
-                    break;
-                }
-            }
-        }
-
-        // Graceful flush on shutdown.
-        if !batch.is_empty() {
-            flush_batch(
-                &mut batch,
-                &mut sequence,
-                agent_id,
-                &mut *transport.lock().await,
-                &mut disk_buffer,
-                &heartbeat_state,
-            )
-            .await
-            .unwrap_or_else(|e| tracing::error!(error = %e, "Final flush failed"));
-        }
-
-        tracing::info!("Agent shut down cleanly");
+        let collector_id = agent_id.to_string();
+        let h = hostname.to_owned();
+        tokio::spawn(async move {
+            run_event_converter(raw_rx, event_tx, tenant_id, collector_id, h, boot_time_ns).await;
+        });
         Ok(())
     }
 
@@ -307,6 +268,100 @@ impl Agent {
 
 // ─── Module-level helpers ────────────────────────────────────────────────────
 
+/// Runs the main event collection loop until shutdown is signalled.
+///
+/// Receives events from `event_rx`, assembles them into batches, and sends
+/// them to the collector. Falls back to the disk buffer when the collector
+/// is unreachable. On shutdown, flushes remaining events.
+///
+/// # Errors
+///
+/// Returns [`AgentError`] on unrecoverable batch flush errors.
+async fn run_event_loop(
+    event_rx: &mut mpsc::Receiver<KronEvent>,
+    transport: &Arc<Mutex<GrpcTransport>>,
+    heartbeat_state: &Arc<Mutex<HeartbeatState>>,
+    disk_buffer: &mut DiskBuffer,
+    agent_id: AgentId,
+    config: &crate::config::AgentConfig,
+    mut shutdown_rx: tokio::sync::broadcast::Receiver<()>,
+) -> Result<(), AgentError> {
+    let mut sequence: u64 = 0;
+    let mut batch: Vec<KronEvent> = Vec::with_capacity(config.ebpf.max_batch_size);
+    let max_batch = config.ebpf.max_batch_size;
+    let batch_delay = config.ebpf.max_batch_delay();
+    let mut batch_deadline = Instant::now() + batch_delay;
+
+    loop {
+        tokio::select! {
+            maybe_event = event_rx.recv() => {
+                if let Some(event) = maybe_event {
+                    metrics::record_events_captured(&event.event_type, 1);
+                    batch.push(event);
+                    if batch.len() >= max_batch {
+                        flush_batch(
+                            &mut batch,
+                            &mut sequence,
+                            agent_id,
+                            &mut *transport.lock().await,
+                            disk_buffer,
+                            heartbeat_state,
+                        ).await?;
+                        batch_deadline = Instant::now() + batch_delay;
+                    }
+                } else {
+                    tracing::warn!("Event channel closed — eBPF reader terminated");
+                    break;
+                }
+            }
+
+            () = tokio::time::sleep_until(batch_deadline) => {
+                if !batch.is_empty() {
+                    flush_batch(
+                        &mut batch,
+                        &mut sequence,
+                        agent_id,
+                        &mut *transport.lock().await,
+                        disk_buffer,
+                        heartbeat_state,
+                    ).await?;
+                }
+                drain_disk_buffer(
+                    disk_buffer,
+                    &mut sequence,
+                    agent_id,
+                    &mut *transport.lock().await,
+                    heartbeat_state,
+                ).await.unwrap_or_else(|e| {
+                    tracing::warn!(error = %e, "Disk buffer drain failed");
+                });
+                batch_deadline = Instant::now() + batch_delay;
+            }
+
+            _ = shutdown_rx.recv() => {
+                tracing::info!("Shutdown signal — flushing remaining events");
+                break;
+            }
+        }
+    }
+
+    // Graceful flush on shutdown.
+    if !batch.is_empty() {
+        flush_batch(
+            &mut batch,
+            &mut sequence,
+            agent_id,
+            &mut *transport.lock().await,
+            disk_buffer,
+            heartbeat_state,
+        )
+        .await
+        .unwrap_or_else(|e| tracing::error!(error = %e, "Final flush failed"));
+    }
+
+    Ok(())
+}
+
 /// Sends `batch` to the collector or writes to disk buffer on failure.
 async fn flush_batch<T: CollectorTransport>(
     batch: &mut Vec<KronEvent>,
@@ -353,8 +408,9 @@ async fn flush_batch<T: CollectorTransport>(
                 metrics::set_collector_connected(false);
                 // Events were serialized into the gRPC frame and ownership transferred;
                 // we cannot recover them from the transport error. Log as dropped.
-                metrics::record_events_dropped(count as u64);
-                heartbeat_state.lock().await.events_dropped_since_last += count as u64;
+                metrics::record_events_dropped(u64::try_from(count).unwrap_or(u64::MAX));
+                heartbeat_state.lock().await.events_dropped_since_last +=
+                    u64::try_from(count).unwrap_or(u64::MAX);
                 return Ok(());
             }
         }
@@ -370,7 +426,7 @@ async fn buffer_batch_to_disk(
     disk_buffer: &mut DiskBuffer,
     heartbeat_state: &Arc<Mutex<HeartbeatState>>,
 ) -> Result<(), AgentError> {
-    let count = events.len() as u64;
+    let count = u64::try_from(events.len()).unwrap_or(u64::MAX);
     // DiskBuffer::push_batch is synchronous; call from async via block_in_place.
     tokio::task::block_in_place(|| disk_buffer.push_batch(&events))?;
     metrics::record_events_buffered(count);
@@ -409,7 +465,9 @@ async fn drain_disk_buffer<T: CollectorTransport>(
             *sequence += 1;
             metrics::record_events_sent(u64::from(ack.accepted));
             let mut hs = heartbeat_state.lock().await;
-            hs.disk_buffer_depth = hs.disk_buffer_depth.saturating_sub(count as u64);
+            hs.disk_buffer_depth = hs
+                .disk_buffer_depth
+                .saturating_sub(u64::try_from(count).unwrap_or(u64::MAX));
             tracing::info!(count, "Replayed disk-buffered events to collector");
         }
         Err(e) => {
@@ -519,6 +577,5 @@ fn primary_ipv4() -> String {
             s.connect("8.8.8.8:80")?;
             s.local_addr()
         })
-        .map(|a| a.ip().to_string())
-        .unwrap_or_else(|_| "0.0.0.0".to_owned())
+        .map_or_else(|_| "0.0.0.0".to_owned(), |a| a.ip().to_string())
 }

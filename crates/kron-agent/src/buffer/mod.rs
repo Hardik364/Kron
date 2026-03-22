@@ -52,7 +52,7 @@ use segment::Segment;
 /// Filename for the persisted read position.
 const READ_POS_FILE: &str = "READ_POS";
 
-/// Stored read position: (segment_id, byte_offset_in_segment).
+/// Stored read position: (`segment_id`, `byte_offset_in_segment`).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct ReadPos {
     segment_id: u64,
@@ -160,35 +160,32 @@ impl DiskBuffer {
             }
 
             let mut seg = Segment::open_read(&segment_path)?;
-            match seg.read_at(self.read_pos.offset)? {
-                Some((event, new_offset)) => {
-                    result.push(event);
-                    self.read_pos.offset = new_offset;
+            if let Some((event, new_offset)) = seg.read_at(self.read_pos.offset)? {
+                result.push(event);
+                self.read_pos.offset = new_offset;
+                self.save_read_pos()?;
+            } else {
+                // End of this segment; advance to the next.
+                let next_id = self.read_pos.segment_id + 1;
+                let next_path = Self::segment_path(&self.data_dir, next_id);
+                if next_path.exists() || next_id <= self.write_segment_id {
+                    // Delete the fully-consumed segment.
+                    let freed = fs::metadata(&segment_path).map(|m| m.len()).unwrap_or(0);
+                    fs::remove_file(&segment_path).map_err(|e| {
+                        AgentError::Buffer(format!(
+                            "cannot remove drained segment {}: {e}",
+                            segment_path.display()
+                        ))
+                    })?;
+                    self.total_bytes = self.total_bytes.saturating_sub(freed);
+                    self.read_pos = ReadPos {
+                        segment_id: next_id,
+                        offset: 0,
+                    };
                     self.save_read_pos()?;
-                }
-                None => {
-                    // End of this segment; advance to the next.
-                    let next_id = self.read_pos.segment_id + 1;
-                    let next_path = Self::segment_path(&self.data_dir, next_id);
-                    if next_path.exists() || next_id <= self.write_segment_id {
-                        // Delete the fully-consumed segment.
-                        let freed = fs::metadata(&segment_path).map(|m| m.len()).unwrap_or(0);
-                        fs::remove_file(&segment_path).map_err(|e| {
-                            AgentError::Buffer(format!(
-                                "cannot remove drained segment {}: {e}",
-                                segment_path.display()
-                            ))
-                        })?;
-                        self.total_bytes = self.total_bytes.saturating_sub(freed);
-                        self.read_pos = ReadPos {
-                            segment_id: next_id,
-                            offset: 0,
-                        };
-                        self.save_read_pos()?;
-                    } else {
-                        // No next segment — buffer is empty.
-                        break;
-                    }
+                } else {
+                    // No next segment — buffer is empty.
+                    break;
                 }
             }
         }
@@ -199,6 +196,7 @@ impl DiskBuffer {
 
     /// Returns the approximate number of bytes used by the buffer on disk.
     #[must_use]
+    #[allow(dead_code)]
     pub fn total_bytes(&self) -> u64 {
         self.total_bytes
     }

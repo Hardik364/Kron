@@ -31,10 +31,10 @@ use kron_types::{
     AgentId, EventAck, EventBatch, HeartbeatRequest, HeartbeatResponse, RegisterRequest,
     RegisterResponse, TenantId,
 };
+use tokio::sync::RwLock;
 use tonic::body::BoxBody;
 use tonic::server::{Grpc, NamedService, UnaryService};
 use tonic::{Request, Response, Status};
-use tokio::sync::RwLock;
 
 use crate::codec::{EventBatchCodec, HeartbeatCodec, RegisterCodec};
 use crate::metrics;
@@ -81,7 +81,8 @@ where
 {
     type Response = http::Response<BoxBody>;
     type Error = std::convert::Infallible;
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'static>>;
+    type Future =
+        Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'static>>;
 
     fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
@@ -141,7 +142,7 @@ impl UnaryService<RegisterRequest> for RegisterSvc {
             let inner = req.into_inner();
 
             let tenant_id = resolve_tenant_id(&inner, &state.default_tenant_id)
-                .map_err(|e| Status::invalid_argument(e))?;
+                .map_err(Status::invalid_argument)?;
 
             let (agent_id, is_new) = state.registry.write().await.register(&inner, tenant_id);
 
@@ -206,11 +207,12 @@ impl UnaryService<EventBatch> for SendEventsSvc {
             };
 
             // Rate limit check.
+            let event_count_u32 = u32::try_from(event_count).unwrap_or(u32::MAX);
             let allowed = state
                 .registry
                 .write()
                 .await
-                .check_rate_limit(&agent_id, event_count as u32);
+                .check_rate_limit(&agent_id, event_count_u32);
             if !allowed {
                 metrics::record_rate_limited(event_count as u64);
                 metrics::record_events_rejected("rate_limit", event_count as u64);
@@ -222,7 +224,7 @@ impl UnaryService<EventBatch> for SendEventsSvc {
                 return Ok(Response::new(EventAck {
                     sequence,
                     accepted: 0,
-                    rejected: event_count as u32,
+                    rejected: event_count_u32,
                 }));
             }
 
@@ -331,22 +333,13 @@ impl UnaryService<HeartbeatRequest> for HeartbeatSvc {
 ///
 /// Agents include `tenant_id` in their labels map (set in `agent.toml`).
 /// If absent, the collector's `default_tenant_id` is used.
-fn resolve_tenant_id(
-    req: &RegisterRequest,
-    default: &str,
-) -> Result<TenantId, String> {
-    let raw = req
-        .labels
-        .get("tenant_id")
-        .map(String::as_str)
-        .unwrap_or(default);
+fn resolve_tenant_id(req: &RegisterRequest, default: &str) -> Result<TenantId, String> {
+    let raw = req.labels.get("tenant_id").map_or(default, String::as_str);
 
     if raw.is_empty() {
-        return Err(
-            "tenant_id is required: set labels.tenant_id in agent.toml \
+        return Err("tenant_id is required: set labels.tenant_id in agent.toml \
              or default_tenant_id in collector config"
-                .to_owned(),
-        );
+            .to_owned());
     }
 
     uuid::Uuid::from_str(raw)

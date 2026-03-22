@@ -43,32 +43,17 @@ pub async fn run_stats(config: &CtlConfig) -> Result<(), CtlError> {
         "    p50 = {:.1}ms  p99 = {:.1}ms",
         stats.p50_ms, stats.p99_ms
     );
-    println!(
-        "    total queries  : {}",
-        stats.total_queries
-    );
-    println!(
-        "    total inserted : {}",
-        stats.total_events_inserted
-    );
+    println!("    total queries  : {}", stats.total_queries);
+    println!("    total inserted : {}", stats.total_events_inserted);
     println!();
 
     match backend {
         "clickhouse" => {
-            println!(
-                "  ClickHouse URL : {}",
-                config.inner.clickhouse.url
-            );
-            println!(
-                "  Database       : {}",
-                config.inner.clickhouse.database
-            );
+            println!("  ClickHouse URL : {}", config.inner.clickhouse.url);
+            println!("  Database       : {}", config.inner.clickhouse.database);
         }
         "duckdb" => {
-            println!(
-                "  DuckDB path    : {}",
-                config.inner.duckdb.path.display()
-            );
+            println!("  DuckDB path    : {}", config.inner.duckdb.path.display());
         }
         _ => {}
     }
