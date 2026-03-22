@@ -11,6 +11,14 @@ description = "AI/ML inference for KRON — ONNX models and Mistral 7B, all runn
 kron-types = { path = "../kron-types" }
 thiserror = { workspace = true }
 tokio = { workspace = true }
+ort = { workspace = true }
+ndarray = { workspace = true }
+once_cell = { workspace = true }
+tracing = { workspace = true }
+metrics = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
 
 [lints]
 workspace = true

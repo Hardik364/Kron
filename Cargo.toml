@@ -72,7 +72,7 @@ maxminddb = "0.24"
 aes-gcm = "0.10"
 
 # AI/ML
-ort = { version = "1.18", features = ["load-dynamic"] }
+ort = { version = "2.0.0-rc.12", features = ["load-dynamic"] }
 ndarray = "0.15"
 
 # Utilities
