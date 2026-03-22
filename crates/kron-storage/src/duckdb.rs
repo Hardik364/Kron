@@ -1,11 +1,11 @@
-//! DuckDB implementation of [`StorageEngine`].
+//! `DuckDB` implementation of [`StorageEngine`].
 //!
-//! DuckDB is used for Nano tier deployments. It's embedded (single binary),
+//! `DuckDB` is used for Nano tier deployments. It's embedded (single binary),
 //! uses Parquet natively, and supports all SQL operations synchronously.
 //!
 //! Connection: single connection wrapped in `Arc<Mutex<>>` for async safety.
-//! DuckDB is single-writer, so all writes serialize through the mutex.
-//! Reads can interleave with other reads but not writes (DuckDB MVCC).
+//! `DuckDB` is single-writer, so all writes serialize through the mutex.
+//! Reads can interleave with other reads but not writes (`DuckDB` MVCC).
 
 use crate::migration;
 use crate::query::EventFilter;
@@ -17,13 +17,13 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::instrument;
 
-/// DuckDB storage engine for Nano tier.
+/// `DuckDB` storage engine for Nano tier.
 ///
-/// Wraps a synchronous DuckDB connection in async-safe primitives.
+/// Wraps a synchronous `DuckDB` connection in async-safe primitives.
 /// All database calls go through [`tokio::task::spawn_blocking`] to avoid
 /// blocking the async runtime.
 pub struct DuckDbEngine {
-    /// Thread-safe handle to the DuckDB connection.
+    /// Thread-safe handle to the `DuckDB` connection.
     conn: Arc<Mutex<duckdb::Connection>>,
     /// Path to the migrations directory.
     migrations_dir: String,
@@ -34,10 +34,10 @@ pub struct DuckDbEngine {
 }
 
 impl DuckDbEngine {
-    /// Create a new DuckDB storage engine.
+    /// Create a new `DuckDB` storage engine.
     ///
     /// # Arguments
-    /// * `db_path` - Path to the DuckDB database file. Use `:memory:` for testing.
+    /// * `db_path` - Path to the `DuckDB` database file. Use `:memory:` for testing.
     /// * `migrations_dir` - Path to the directory containing SQL migration files.
     ///
     /// # Errors
@@ -56,7 +56,7 @@ impl DuckDbEngine {
         })
     }
 
-    /// Create an in-memory DuckDB engine for testing.
+    /// Create an in-memory `DuckDB` engine for testing.
     ///
     /// # Arguments
     /// * `migrations_dir` - Path to the directory containing SQL migration files.
@@ -114,7 +114,7 @@ fn apply_migrations_sync(conn: &duckdb::Connection, migrations_dir: &str) -> Sto
             Ok((row.get::<_, i32>(0)?, row.get::<_, String>(1)?))
         })
         .map_err(|e| KronError::Storage(format!("failed to read applied migrations: {e}")))?
-        .filter_map(|r| r.ok())
+        .filter_map(std::result::Result::ok)
         .collect();
 
     for migration in &migrations {
@@ -171,49 +171,142 @@ fn apply_migrations_sync(conn: &duckdb::Connection, migrations_dir: &str) -> Sto
     Ok(())
 }
 
-/// Insert events into DuckDB synchronously.
+/// SQL template for inserting one event row.
+const INSERT_EVENT_SQL: &str = "INSERT INTO events (
+    event_id, tenant_id, dedup_hash, ts, ts_received, ingest_lag_ms,
+    source_type, collector_id, raw,
+    host_id, hostname, host_ip, host_fqdn, asset_criticality, asset_tags,
+    user_name, user_id, user_domain, user_type,
+    event_type, event_category, event_action,
+    src_ip, src_ip6, src_port, dst_ip, dst_ip6, dst_port,
+    protocol, bytes_in, bytes_out, packets_in, packets_out, direction,
+    process_name, process_pid, process_ppid, process_path, process_cmdline,
+    process_hash, parent_process,
+    file_path, file_name, file_hash, file_size, file_action,
+    auth_result, auth_method, auth_protocol,
+    src_country, src_city, src_asn, src_asn_name, dst_country,
+    ioc_hit, ioc_type, ioc_value, ioc_feed,
+    mitre_tactic, mitre_technique, mitre_sub_tech,
+    severity, severity_score,
+    anomaly_score, ueba_score, beacon_score, exfil_score,
+    fields, schema_version
+) VALUES (
+    ?, ?, ?, ?, ?, ?,
+    ?, ?, ?,
+    ?, ?, ?, ?, ?, ?,
+    ?, ?, ?, ?,
+    ?, ?, ?,
+    ?, ?, ?, ?, ?, ?,
+    ?, ?, ?, ?, ?, ?,
+    ?, ?, ?, ?, ?,
+    ?, ?,
+    ?, ?, ?, ?, ?,
+    ?, ?, ?,
+    ?, ?, ?, ?, ?,
+    ?, ?, ?, ?,
+    ?, ?, ?,
+    ?, ?,
+    ?, ?, ?, ?,
+    ?, ?
+)";
+
+/// Execute a single event INSERT into the prepared statement.
+fn execute_event_insert(stmt: &mut duckdb::Statement<'_>, event: &KronEvent) -> StorageResult<()> {
+    let fields_json = serde_json::to_string(&event.fields)
+        .map_err(|e| KronError::Storage(format!("failed to serialize fields: {e}")))?;
+    let asset_tags_json = serde_json::to_string(&event.asset_tags)
+        .map_err(|e| KronError::Storage(format!("failed to serialize asset_tags: {e}")))?;
+
+    stmt.execute(duckdb::params![
+        event.event_id.to_string(),
+        event.tenant_id.to_string(),
+        event.dedup_hash,
+        event.ts.to_rfc3339(),
+        event.ts_received.to_rfc3339(),
+        event.ingest_lag_ms,
+        event.source_type.to_string(),
+        event.collector_id,
+        event.raw,
+        event.host_id,
+        event.hostname,
+        event.host_ip.map(|ip| ip.to_string()),
+        event.host_fqdn,
+        event.asset_criticality.to_string(),
+        asset_tags_json,
+        event.user_name,
+        event.user_id,
+        event.user_domain,
+        event.user_type.as_ref().map(ToString::to_string),
+        event.event_type,
+        event.event_category.as_ref().map(ToString::to_string),
+        event.event_action,
+        event.src_ip.map(|ip| ip.to_string()),
+        event.src_ip6.map(|ip| ip.to_string()),
+        event.src_port,
+        event.dst_ip.map(|ip| ip.to_string()),
+        event.dst_ip6.map(|ip| ip.to_string()),
+        event.dst_port,
+        event.protocol,
+        event.bytes_in,
+        event.bytes_out,
+        event.packets_in,
+        event.packets_out,
+        event.direction.as_ref().map(ToString::to_string),
+        event.process_name,
+        event.process_pid,
+        event.process_ppid,
+        event.process_path,
+        event.process_cmdline,
+        event.process_hash,
+        event.parent_process,
+        event.file_path,
+        event.file_name,
+        event.file_hash,
+        event.file_size,
+        event.file_action.as_ref().map(ToString::to_string),
+        event.auth_result.as_ref().map(ToString::to_string),
+        event.auth_method,
+        event.auth_protocol,
+        event.src_country,
+        event.src_city,
+        event.src_asn,
+        event.src_asn_name,
+        event.dst_country,
+        event.ioc_hit,
+        event.ioc_type,
+        event.ioc_value,
+        event.ioc_feed,
+        event.mitre_tactic,
+        event.mitre_technique,
+        event.mitre_sub_tech,
+        event.severity.to_string(),
+        event.severity_score,
+        event.anomaly_score,
+        event.ueba_score,
+        event.beacon_score,
+        event.exfil_score,
+        fields_json,
+        event.schema_version,
+    ])
+    .map_err(|e| {
+        tracing::error!(
+            event_id = %event.event_id,
+            tenant_id = %event.tenant_id,
+            error = %e,
+            "Failed to insert event into DuckDB"
+        );
+        KronError::Storage(format!("failed to insert event {}: {e}", event.event_id))
+    })?;
+    Ok(())
+}
+
+/// Insert events into `DuckDB` synchronously.
 fn insert_events_sync(
     conn: &duckdb::Connection,
     tenant_id: &TenantId,
     events: &[KronEvent],
 ) -> StorageResult<u64> {
-    let sql = "INSERT INTO events (
-        event_id, tenant_id, dedup_hash, ts, ts_received, ingest_lag_ms,
-        source_type, collector_id, raw,
-        host_id, hostname, host_ip, host_fqdn, asset_criticality, asset_tags,
-        user_name, user_id, user_domain, user_type,
-        event_type, event_category, event_action,
-        src_ip, src_ip6, src_port, dst_ip, dst_ip6, dst_port,
-        protocol, bytes_in, bytes_out, packets_in, packets_out, direction,
-        process_name, process_pid, process_ppid, process_path, process_cmdline,
-        process_hash, parent_process,
-        file_path, file_name, file_hash, file_size, file_action,
-        auth_result, auth_method, auth_protocol,
-        src_country, src_city, src_asn, src_asn_name, dst_country,
-        ioc_hit, ioc_type, ioc_value, ioc_feed,
-        mitre_tactic, mitre_technique, mitre_sub_tech,
-        severity, severity_score,
-        anomaly_score, ueba_score, beacon_score, exfil_score,
-        fields, schema_version
-    ) VALUES (
-        ?, ?, ?, ?, ?, ?,
-        ?, ?, ?,
-        ?, ?, ?, ?, ?, ?,
-        ?, ?, ?, ?,
-        ?, ?, ?,
-        ?, ?, ?, ?, ?, ?,
-        ?, ?, ?, ?, ?, ?,
-        ?, ?, ?, ?, ?,
-        ?, ?,
-        ?, ?, ?, ?, ?,
-        ?, ?, ?,
-        ?, ?, ?, ?, ?,
-        ?, ?, ?, ?,
-        ?, ?, ?,
-        ?, ?,
-        ?, ?, ?, ?,
-        ?, ?
-    )";
+    let sql = INSERT_EVENT_SQL;
 
     let mut stmt = conn
         .prepare(sql)
@@ -229,105 +322,18 @@ fn insert_events_sync(
                 target: event.tenant_id.to_string(),
             });
         }
-
-        let fields_json = serde_json::to_string(&event.fields)
-            .map_err(|e| KronError::Storage(format!("failed to serialize fields: {e}")))?;
-
-        let asset_tags_json = serde_json::to_string(&event.asset_tags)
-            .map_err(|e| KronError::Storage(format!("failed to serialize asset_tags: {e}")))?;
-
-        stmt.execute(duckdb::params![
-            event.event_id.to_string(),
-            event.tenant_id.to_string(),
-            event.dedup_hash,
-            event.ts.to_rfc3339(),
-            event.ts_received.to_rfc3339(),
-            event.ingest_lag_ms,
-            event.source_type.to_string(),
-            event.collector_id,
-            event.raw,
-            event.host_id,
-            event.hostname,
-            event.host_ip.map(|ip| ip.to_string()),
-            event.host_fqdn,
-            event.asset_criticality.to_string(),
-            asset_tags_json,
-            event.user_name,
-            event.user_id,
-            event.user_domain,
-            event.user_type.as_ref().map(|ut| ut.to_string()),
-            event.event_type,
-            event.event_category.as_ref().map(|ec| ec.to_string()),
-            event.event_action,
-            event.src_ip.map(|ip| ip.to_string()),
-            event.src_ip6.map(|ip| ip.to_string()),
-            event.src_port,
-            event.dst_ip.map(|ip| ip.to_string()),
-            event.dst_ip6.map(|ip| ip.to_string()),
-            event.dst_port,
-            event.protocol,
-            event.bytes_in,
-            event.bytes_out,
-            event.packets_in,
-            event.packets_out,
-            event.direction.as_ref().map(|d| d.to_string()),
-            event.process_name,
-            event.process_pid,
-            event.process_ppid,
-            event.process_path,
-            event.process_cmdline,
-            event.process_hash,
-            event.parent_process,
-            event.file_path,
-            event.file_name,
-            event.file_hash,
-            event.file_size,
-            event.file_action.as_ref().map(|fa| fa.to_string()),
-            event.auth_result.as_ref().map(|ar| ar.to_string()),
-            event.auth_method,
-            event.auth_protocol,
-            event.src_country,
-            event.src_city,
-            event.src_asn,
-            event.src_asn_name,
-            event.dst_country,
-            event.ioc_hit,
-            event.ioc_type,
-            event.ioc_value,
-            event.ioc_feed,
-            event.mitre_tactic,
-            event.mitre_technique,
-            event.mitre_sub_tech,
-            event.severity.to_string(),
-            event.severity_score,
-            event.anomaly_score,
-            event.ueba_score,
-            event.beacon_score,
-            event.exfil_score,
-            fields_json,
-            event.schema_version,
-        ])
-        .map_err(|e| {
-            tracing::error!(
-                event_id = %event.event_id,
-                tenant_id = %event.tenant_id,
-                error = %e,
-                "Failed to insert event into DuckDB"
-            );
-            KronError::Storage(format!("failed to insert event {}: {e}", event.event_id))
-        })?;
-
+        execute_event_insert(&mut stmt, event)?;
         inserted += 1;
     }
 
     Ok(inserted)
 }
 
-/// Query events from DuckDB synchronously.
+/// Query events from `DuckDB` synchronously.
 fn query_events_sync(
     conn: &duckdb::Connection,
     tenant_id: &TenantId,
-    filter: &Option<EventFilter>,
+    filter: Option<&EventFilter>,
     limit: u32,
 ) -> StorageResult<Vec<KronEvent>> {
     let mut sql = String::from("SELECT * FROM events WHERE tenant_id = ?");
@@ -337,11 +343,11 @@ fn query_events_sync(
     if let Some(f) = filter {
         if let Some(ref from) = f.from_ts {
             string_params.push(from.to_rfc3339());
-            sql.push_str(&format!(" AND ts >= ?"));
+            sql.push_str(" AND ts >= ?");
         }
         if let Some(ref to) = f.to_ts {
             string_params.push(to.to_rfc3339());
-            sql.push_str(&format!(" AND ts <= ?"));
+            sql.push_str(" AND ts <= ?");
         }
         if let Some(ref source) = f.source_type {
             string_params.push(source.clone());
@@ -408,146 +414,245 @@ fn query_events_sync(
     Ok(events)
 }
 
-/// Convert a DuckDB row into a `KronEvent`.
-fn row_to_event(row: &duckdb::Row<'_>) -> Result<KronEvent, KronError> {
-    use std::str::FromStr;
+/// Core fields parsed from columns 0–8 of an event row.
+type CoreFields = (
+    kron_types::EventId,
+    TenantId,
+    u64,
+    chrono::DateTime<chrono::Utc>,
+    chrono::DateTime<chrono::Utc>,
+    u32,
+    kron_types::EventSource,
+    String,
+    String,
+);
 
+/// Parse core identity, timestamp, and source fields from columns 0–8.
+fn parse_core_fields(row: &duckdb::Row<'_>) -> Result<CoreFields, KronError> {
+    use std::str::FromStr;
     let event_id_str: String = row
         .get(0)
         .map_err(|e| KronError::Storage(format!("failed to read event_id: {e}")))?;
     let tenant_id_str: String = row
         .get(1)
         .map_err(|e| KronError::Storage(format!("failed to read tenant_id: {e}")))?;
-
     let event_id = kron_types::EventId::from_str(&event_id_str)
         .map_err(|e| KronError::Parse(format!("invalid event_id UUID: {e}")))?;
     let tenant_id = TenantId::from_str(&tenant_id_str)
         .map_err(|e| KronError::Parse(format!("invalid tenant_id UUID: {e}")))?;
-
     let dedup_hash: u64 = row
         .get(2)
         .map_err(|e| KronError::Storage(format!("failed to read dedup_hash: {e}")))?;
-
     let ts_str: String = row
         .get(3)
         .map_err(|e| KronError::Storage(format!("failed to read ts: {e}")))?;
     let ts_received_str: String = row
         .get(4)
         .map_err(|e| KronError::Storage(format!("failed to read ts_received: {e}")))?;
-
     let ts = chrono::DateTime::parse_from_rfc3339(&ts_str)
         .map(|dt| dt.with_timezone(&chrono::Utc))
         .map_err(|e| KronError::Parse(format!("invalid ts: {e}")))?;
     let ts_received = chrono::DateTime::parse_from_rfc3339(&ts_received_str)
         .map(|dt| dt.with_timezone(&chrono::Utc))
         .map_err(|e| KronError::Parse(format!("invalid ts_received: {e}")))?;
-
     let ingest_lag_ms: u32 = row
         .get(5)
         .map_err(|e| KronError::Storage(format!("failed to read ingest_lag_ms: {e}")))?;
-
     let source_type_str: String = row
         .get(6)
         .map_err(|e| KronError::Storage(format!("failed to read source_type: {e}")))?;
     let source_type = kron_types::EventSource::from_str(&source_type_str)
         .unwrap_or(kron_types::EventSource::Unknown);
-
     let collector_id: String = row
         .get(7)
         .map_err(|e| KronError::Storage(format!("failed to read collector_id: {e}")))?;
     let raw: String = row
         .get(8)
         .map_err(|e| KronError::Storage(format!("failed to read raw: {e}")))?;
+    Ok((
+        event_id,
+        tenant_id,
+        dedup_hash,
+        ts,
+        ts_received,
+        ingest_lag_ms,
+        source_type,
+        collector_id,
+        raw,
+    ))
+}
 
-    let host_id: Option<String> = row.get(9).ok();
-    let hostname: Option<String> = row.get(10).ok();
-    let host_ip_str: Option<String> = row.get(11).ok();
-    let host_fqdn: Option<String> = row.get(12).ok();
+/// Host, user, event-type, and network fields from event row columns 9–33.
+struct HostNetworkFields {
+    host_id: Option<String>,
+    hostname: Option<String>,
+    host_ip_str: Option<String>,
+    host_fqdn: Option<String>,
+    asset_criticality: kron_types::AssetCriticality,
+    asset_tags: Vec<String>,
+    user_name: Option<String>,
+    user_id: Option<String>,
+    user_domain: Option<String>,
+    user_type: Option<kron_types::UserType>,
+    event_type: String,
+    event_category: Option<kron_types::EventCategory>,
+    event_action: Option<String>,
+    src_ip_str: Option<String>,
+    src_ipv6_str: Option<String>,
+    src_port: Option<u16>,
+    dst_ip_str: Option<String>,
+    dst_ipv6_str: Option<String>,
+    dst_port: Option<u16>,
+    protocol: Option<String>,
+    bytes_in: Option<u64>,
+    bytes_out: Option<u64>,
+    packets_in: Option<u32>,
+    packets_out: Option<u32>,
+    direction: Option<kron_types::NetworkDirection>,
+}
 
+/// Read host, user, event-type, and network fields from columns 9–33.
+fn read_host_user_network_fields(row: &duckdb::Row<'_>) -> Result<HostNetworkFields, KronError> {
+    use std::str::FromStr;
     let asset_crit_str: String = row.get(13).unwrap_or_else(|_| "unknown".to_string());
-    let asset_criticality =
-        kron_types::AssetCriticality::from_str(&asset_crit_str).unwrap_or_default();
-
     let asset_tags_json: String = row.get(14).unwrap_or_else(|_| "[]".to_string());
-    let asset_tags: Vec<String> = serde_json::from_str(&asset_tags_json).unwrap_or_default();
-
-    let user_name: Option<String> = row.get(15).ok();
-    let user_id: Option<String> = row.get(16).ok();
-    let user_domain: Option<String> = row.get(17).ok();
     let user_type_str: Option<String> = row.get(18).ok();
-    let user_type = user_type_str.and_then(|s| kron_types::UserType::from_str(&s).ok());
-
-    let event_type: String = row
-        .get(19)
-        .map_err(|e| KronError::Storage(format!("failed to read event_type: {e}")))?;
     let event_category_str: Option<String> = row.get(20).ok();
-    let event_category =
-        event_category_str.and_then(|s| kron_types::EventCategory::from_str(&s).ok());
-    let event_action: Option<String> = row.get(21).ok();
-
-    let src_ip_str: Option<String> = row.get(22).ok();
-    let src_ip6_str: Option<String> = row.get(23).ok();
-    let src_port: Option<u16> = row.get(24).ok();
-    let dst_ip_str: Option<String> = row.get(25).ok();
-    let dst_ip6_str: Option<String> = row.get(26).ok();
-    let dst_port: Option<u16> = row.get(27).ok();
-    let protocol: Option<String> = row.get(28).ok();
-    let bytes_in: Option<u64> = row.get(29).ok();
-    let bytes_out: Option<u64> = row.get(30).ok();
-    let packets_in: Option<u32> = row.get(31).ok();
-    let packets_out: Option<u32> = row.get(32).ok();
     let direction_str: Option<String> = row.get(33).ok();
-    let direction = direction_str.and_then(|s| kron_types::NetworkDirection::from_str(&s).ok());
+    Ok(HostNetworkFields {
+        host_id: row.get(9).ok(),
+        hostname: row.get(10).ok(),
+        host_ip_str: row.get(11).ok(),
+        host_fqdn: row.get(12).ok(),
+        asset_criticality: kron_types::AssetCriticality::from_str(&asset_crit_str)
+            .unwrap_or_default(),
+        asset_tags: serde_json::from_str(&asset_tags_json).unwrap_or_default(),
+        user_name: row.get(15).ok(),
+        user_id: row.get(16).ok(),
+        user_domain: row.get(17).ok(),
+        user_type: user_type_str.and_then(|s| kron_types::UserType::from_str(&s).ok()),
+        event_type: row
+            .get(19)
+            .map_err(|e| KronError::Storage(format!("failed to read event_type: {e}")))?,
+        event_category: event_category_str
+            .and_then(|s| kron_types::EventCategory::from_str(&s).ok()),
+        event_action: row.get(21).ok(),
+        src_ip_str: row.get(22).ok(),
+        src_ipv6_str: row.get(23).ok(),
+        src_port: row.get(24).ok(),
+        dst_ip_str: row.get(25).ok(),
+        dst_ipv6_str: row.get(26).ok(),
+        dst_port: row.get(27).ok(),
+        protocol: row.get(28).ok(),
+        bytes_in: row.get(29).ok(),
+        bytes_out: row.get(30).ok(),
+        packets_in: row.get(31).ok(),
+        packets_out: row.get(32).ok(),
+        direction: direction_str.and_then(|s| kron_types::NetworkDirection::from_str(&s).ok()),
+    })
+}
 
-    let process_name: Option<String> = row.get(34).ok();
-    let process_pid: Option<u32> = row.get(35).ok();
-    let process_ppid: Option<u32> = row.get(36).ok();
-    let process_path: Option<String> = row.get(37).ok();
-    let process_cmdline: Option<String> = row.get(38).ok();
-    let process_hash: Option<String> = row.get(39).ok();
-    let parent_process: Option<String> = row.get(40).ok();
+/// Detail fields read from event row columns 34–68.
+struct DetailFields {
+    process_name: Option<String>,
+    process_pid: Option<u32>,
+    process_parent_pid: Option<u32>,
+    process_path: Option<String>,
+    process_cmdline: Option<String>,
+    process_hash: Option<String>,
+    parent_process: Option<String>,
+    file_path: Option<String>,
+    file_name: Option<String>,
+    file_hash: Option<String>,
+    file_size: Option<u64>,
+    file_action: Option<kron_types::FileAction>,
+    auth_result: Option<kron_types::AuthResult>,
+    auth_method: Option<String>,
+    auth_protocol: Option<String>,
+    src_country: Option<String>,
+    src_city: Option<String>,
+    src_asn: Option<u32>,
+    src_asn_name: Option<String>,
+    dst_country: Option<String>,
+    ioc_hit: bool,
+    ioc_type: Option<String>,
+    ioc_value: Option<String>,
+    ioc_feed: Option<String>,
+    mitre_tactic: Option<String>,
+    mitre_technique: Option<String>,
+    mitre_sub_tech: Option<String>,
+    severity: kron_types::Severity,
+    severity_score: u8,
+    anomaly_score: f32,
+    ueba_score: f32,
+    beacon_score: f32,
+    exfil_score: f32,
+    fields: std::collections::HashMap<String, String>,
+    schema_version: u8,
+}
 
-    let file_path: Option<String> = row.get(41).ok();
-    let file_name: Option<String> = row.get(42).ok();
-    let file_hash: Option<String> = row.get(43).ok();
-    let file_size: Option<u64> = row.get(44).ok();
+/// Read process, file, auth, geo, IOC, MITRE, score, and metadata fields (columns 34–68).
+fn read_detail_fields(row: &duckdb::Row<'_>) -> DetailFields {
+    use std::str::FromStr;
     let file_action_str: Option<String> = row.get(45).ok();
-    let file_action = file_action_str.and_then(|s| kron_types::FileAction::from_str(&s).ok());
-
     let auth_result_str: Option<String> = row.get(46).ok();
-    let auth_result = auth_result_str.and_then(|s| kron_types::AuthResult::from_str(&s).ok());
-    let auth_method: Option<String> = row.get(47).ok();
-    let auth_protocol: Option<String> = row.get(48).ok();
-
-    let src_country: Option<String> = row.get(49).ok();
-    let src_city: Option<String> = row.get(50).ok();
-    let src_asn: Option<u32> = row.get(51).ok();
-    let src_asn_name: Option<String> = row.get(52).ok();
-    let dst_country: Option<String> = row.get(53).ok();
-
-    let ioc_hit: bool = row.get(54).unwrap_or(false);
-    let ioc_type: Option<String> = row.get(55).ok();
-    let ioc_value: Option<String> = row.get(56).ok();
-    let ioc_feed: Option<String> = row.get(57).ok();
-
-    let mitre_tactic: Option<String> = row.get(58).ok();
-    let mitre_technique: Option<String> = row.get(59).ok();
-    let mitre_sub_tech: Option<String> = row.get(60).ok();
-
     let severity_str: String = row.get(61).unwrap_or_else(|_| "info".to_string());
-    let severity = kron_types::Severity::from_str(&severity_str).unwrap_or_default();
-    let severity_score: u8 = row.get(62).unwrap_or(0);
-
-    let anomaly_score: f32 = row.get(63).unwrap_or(0.0);
-    let ueba_score: f32 = row.get(64).unwrap_or(0.0);
-    let beacon_score: f32 = row.get(65).unwrap_or(0.0);
-    let exfil_score: f32 = row.get(66).unwrap_or(0.0);
-
     let fields_json: String = row.get(67).unwrap_or_else(|_| "{}".to_string());
-    let fields: std::collections::HashMap<String, String> =
-        serde_json::from_str(&fields_json).unwrap_or_default();
+    DetailFields {
+        process_name: row.get(34).ok(),
+        process_pid: row.get(35).ok(),
+        process_parent_pid: row.get(36).ok(),
+        process_path: row.get(37).ok(),
+        process_cmdline: row.get(38).ok(),
+        process_hash: row.get(39).ok(),
+        parent_process: row.get(40).ok(),
+        file_path: row.get(41).ok(),
+        file_name: row.get(42).ok(),
+        file_hash: row.get(43).ok(),
+        file_size: row.get(44).ok(),
+        file_action: file_action_str.and_then(|s| kron_types::FileAction::from_str(&s).ok()),
+        auth_result: auth_result_str.and_then(|s| kron_types::AuthResult::from_str(&s).ok()),
+        auth_method: row.get(47).ok(),
+        auth_protocol: row.get(48).ok(),
+        src_country: row.get(49).ok(),
+        src_city: row.get(50).ok(),
+        src_asn: row.get(51).ok(),
+        src_asn_name: row.get(52).ok(),
+        dst_country: row.get(53).ok(),
+        ioc_hit: row.get(54).unwrap_or(false),
+        ioc_type: row.get(55).ok(),
+        ioc_value: row.get(56).ok(),
+        ioc_feed: row.get(57).ok(),
+        mitre_tactic: row.get(58).ok(),
+        mitre_technique: row.get(59).ok(),
+        mitre_sub_tech: row.get(60).ok(),
+        severity: kron_types::Severity::from_str(&severity_str).unwrap_or_default(),
+        severity_score: row.get(62).unwrap_or(0),
+        anomaly_score: row.get(63).unwrap_or(0.0),
+        ueba_score: row.get(64).unwrap_or(0.0),
+        beacon_score: row.get(65).unwrap_or(0.0),
+        exfil_score: row.get(66).unwrap_or(0.0),
+        fields: serde_json::from_str(&fields_json).unwrap_or_default(),
+        schema_version: row.get(68).unwrap_or(1),
+    }
+}
 
-    let schema_version: u8 = row.get(68).unwrap_or(1);
+/// Convert a `DuckDB` row into a `KronEvent`.
+fn row_to_event(row: &duckdb::Row<'_>) -> Result<KronEvent, KronError> {
+    let (
+        event_id,
+        tenant_id,
+        dedup_hash,
+        ts,
+        ts_received,
+        ingest_lag_ms,
+        source_type,
+        collector_id,
+        raw,
+    ) = parse_core_fields(row)?;
+
+    let h = read_host_user_network_fields(row)?;
+    let d = read_detail_fields(row);
 
     Ok(KronEvent {
         event_id,
@@ -559,66 +664,66 @@ fn row_to_event(row: &duckdb::Row<'_>) -> Result<KronEvent, KronError> {
         source_type,
         collector_id,
         raw,
-        host_id,
-        hostname,
-        host_ip: host_ip_str.and_then(|s| s.parse().ok()),
-        host_fqdn,
-        asset_criticality,
-        asset_tags,
-        user_name,
-        user_id,
-        user_domain,
-        user_type,
-        event_type,
-        event_category,
-        event_action,
-        src_ip: src_ip_str.and_then(|s| s.parse().ok()),
-        src_ip6: src_ip6_str.and_then(|s| s.parse().ok()),
-        src_port,
-        dst_ip: dst_ip_str.and_then(|s| s.parse().ok()),
-        dst_ip6: dst_ip6_str.and_then(|s| s.parse().ok()),
-        dst_port,
-        protocol,
-        bytes_in,
-        bytes_out,
-        packets_in,
-        packets_out,
-        direction,
-        process_name,
-        process_pid,
-        process_ppid,
-        process_path,
-        process_cmdline,
-        process_hash,
-        parent_process,
-        file_path,
-        file_name,
-        file_hash,
-        file_size,
-        file_action,
-        auth_result,
-        auth_method,
-        auth_protocol,
-        src_country,
-        src_city,
-        src_asn,
-        src_asn_name,
-        dst_country,
-        ioc_hit,
-        ioc_type,
-        ioc_value,
-        ioc_feed,
-        mitre_tactic,
-        mitre_technique,
-        mitre_sub_tech,
-        severity,
-        severity_score,
-        anomaly_score,
-        ueba_score,
-        beacon_score,
-        exfil_score,
-        fields,
-        schema_version,
+        host_id: h.host_id,
+        hostname: h.hostname,
+        host_ip: h.host_ip_str.and_then(|s| s.parse().ok()),
+        host_fqdn: h.host_fqdn,
+        asset_criticality: h.asset_criticality,
+        asset_tags: h.asset_tags,
+        user_name: h.user_name,
+        user_id: h.user_id,
+        user_domain: h.user_domain,
+        user_type: h.user_type,
+        event_type: h.event_type,
+        event_category: h.event_category,
+        event_action: h.event_action,
+        src_ip: h.src_ip_str.and_then(|s| s.parse().ok()),
+        src_ip6: h.src_ipv6_str.and_then(|s| s.parse().ok()),
+        src_port: h.src_port,
+        dst_ip: h.dst_ip_str.and_then(|s| s.parse().ok()),
+        dst_ip6: h.dst_ipv6_str.and_then(|s| s.parse().ok()),
+        dst_port: h.dst_port,
+        protocol: h.protocol,
+        bytes_in: h.bytes_in,
+        bytes_out: h.bytes_out,
+        packets_in: h.packets_in,
+        packets_out: h.packets_out,
+        direction: h.direction,
+        process_name: d.process_name,
+        process_pid: d.process_pid,
+        process_ppid: d.process_parent_pid,
+        process_path: d.process_path,
+        process_cmdline: d.process_cmdline,
+        process_hash: d.process_hash,
+        parent_process: d.parent_process,
+        file_path: d.file_path,
+        file_name: d.file_name,
+        file_hash: d.file_hash,
+        file_size: d.file_size,
+        file_action: d.file_action,
+        auth_result: d.auth_result,
+        auth_method: d.auth_method,
+        auth_protocol: d.auth_protocol,
+        src_country: d.src_country,
+        src_city: d.src_city,
+        src_asn: d.src_asn,
+        src_asn_name: d.src_asn_name,
+        dst_country: d.dst_country,
+        ioc_hit: d.ioc_hit,
+        ioc_type: d.ioc_type,
+        ioc_value: d.ioc_value,
+        ioc_feed: d.ioc_feed,
+        mitre_tactic: d.mitre_tactic,
+        mitre_technique: d.mitre_technique,
+        mitre_sub_tech: d.mitre_sub_tech,
+        severity: d.severity,
+        severity_score: d.severity_score,
+        anomaly_score: d.anomaly_score,
+        ueba_score: d.ueba_score,
+        beacon_score: d.beacon_score,
+        exfil_score: d.exfil_score,
+        fields: d.fields,
+        schema_version: d.schema_version,
     })
 }
 
@@ -659,7 +764,7 @@ impl StorageEngine for DuckDbEngine {
 
         let events = tokio::task::spawn_blocking(move || {
             let conn = conn.blocking_lock();
-            query_events_sync(&conn, &tenant_id, &filter, limit)
+            query_events_sync(&conn, &tenant_id, filter.as_ref(), limit)
         })
         .await
         .map_err(|e| KronError::Storage(format!("query task panicked: {e}")))??;
@@ -779,6 +884,8 @@ impl StorageEngine for DuckDbEngine {
         let conn = self.conn.clone();
 
         tokio::task::spawn_blocking(move || {
+            use sha2::Digest;
+            use std::fmt::Write as _;
             let conn = conn.blocking_lock();
             let audit_id = uuid::Uuid::new_v4().to_string();
             let now = chrono::Utc::now().to_rfc3339();
@@ -801,14 +908,16 @@ impl StorageEngine for DuckDbEngine {
                 .unwrap_or(1);
 
             // Compute row_hash = SHA256(prev_hash + action + actor_id + ts)
-            use sha2::Digest;
             let mut hasher = sha2::Sha256::new();
             hasher.update(prev_hash.as_bytes());
             hasher.update(entry.action.as_bytes());
             hasher.update(entry.actor_id.as_bytes());
             hasher.update(now.as_bytes());
             let row_hash_bytes = hasher.finalize();
-            let row_hash: String = row_hash_bytes.iter().map(|b| format!("{b:02x}")).collect();
+            let row_hash: String = row_hash_bytes.iter().fold(String::new(), |mut s, b| {
+                let _ = write!(s, "{b:02x}");
+                s
+            });
 
             conn.execute(
                 "INSERT INTO audit_log (audit_id, tenant_id, ts, actor_id, actor_type, action, resource_type, resource_id, result, prev_hash, row_hash, chain_seq) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",

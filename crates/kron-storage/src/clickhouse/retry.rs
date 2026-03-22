@@ -1,6 +1,6 @@
-//! Circuit breaker and retry logic for ClickHouse operations.
+//! Circuit breaker and retry logic for `ClickHouse` operations.
 //!
-//! The circuit breaker prevents hammering a down ClickHouse cluster.
+//! The circuit breaker prevents hammering a down `ClickHouse` cluster.
 //! It opens after `threshold` consecutive failures and allows a test
 //! request after `recovery_secs` seconds (half-open state).
 
@@ -76,20 +76,18 @@ fn now_secs() -> u64 {
 /// Non-transient: schema errors, wrong column types, authentication failures.
 pub fn ch_error_is_transient(err: &clickhouse::error::Error) -> bool {
     use clickhouse::error::Error;
-    match err {
-        Error::Network(_) => true,
-        _ => {
-            let msg = err.to_string();
-            msg.contains("503")
-                || msg.contains("Connection refused")
-                || msg.contains("timed out")
-                || msg.contains("reset by peer")
-        }
+    if let Error::Network(_) = err {
+        return true;
     }
+    let msg = err.to_string();
+    msg.contains("503")
+        || msg.contains("Connection refused")
+        || msg.contains("timed out")
+        || msg.contains("reset by peer")
 }
 
 /// Convert a `clickhouse::error::Error` to `KronError::Storage`.
-pub fn ch_to_kron(err: clickhouse::error::Error) -> KronError {
+pub fn ch_to_kron(err: &clickhouse::error::Error) -> KronError {
     KronError::Storage(format!("ClickHouse error: {err}"))
 }
 
@@ -161,7 +159,7 @@ where
                     error = %e,
                     "ClickHouse operation failed"
                 );
-                return Err(ch_to_kron(e));
+                return Err(ch_to_kron(&e));
             }
         }
     }

@@ -21,11 +21,11 @@ pub struct EventFilter {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub to_ts: Option<DateTime<Utc>>,
 
-    /// Only return events of this source type (e.g., 'linux_ebpf', 'syslog').
+    /// Only return events of this source type (e.g., `'linux_ebpf'`, `'syslog'`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_type: Option<String>,
 
-    /// Only return events with this event_type (e.g., 'process_create', 'network_connect').
+    /// Only return events with this `event_type` (e.g., `'process_create'`, `'network_connect'`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub event_type: Option<String>,
 
@@ -38,7 +38,7 @@ pub struct EventFilter {
     pub user_name: Option<String>,
 
     /// Only return events with severity >= this value.
-    /// Use enum names: 'critical', 'high', 'medium', 'low', 'info'.
+    /// Use enum names: `'critical'`, `'high'`, `'medium'`, `'low'`, `'info'`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub min_severity: Option<String>,
 
@@ -67,11 +67,13 @@ pub struct EventFilter {
 
 impl EventFilter {
     /// Create a new empty filter (matches all events for a tenant).
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
     /// Filter by timestamp range.
+    #[must_use]
     pub fn with_timestamp_range(mut self, from: DateTime<Utc>, to: DateTime<Utc>) -> Self {
         self.from_ts = Some(from);
         self.to_ts = Some(to);
@@ -79,36 +81,42 @@ impl EventFilter {
     }
 
     /// Filter by source type.
+    #[must_use]
     pub fn with_source_type(mut self, source: String) -> Self {
         self.source_type = Some(source);
         self
     }
 
     /// Filter by event type.
+    #[must_use]
     pub fn with_event_type(mut self, event_type: String) -> Self {
         self.event_type = Some(event_type);
         self
     }
 
     /// Filter by hostname.
+    #[must_use]
     pub fn with_hostname(mut self, hostname: String) -> Self {
         self.hostname = Some(hostname);
         self
     }
 
     /// Filter by minimum severity.
+    #[must_use]
     pub fn with_min_severity(mut self, severity: String) -> Self {
         self.min_severity = Some(severity);
         self
     }
 
     /// Filter by IOC hits only.
+    #[must_use]
     pub fn ioc_hits_only(mut self) -> Self {
         self.ioc_hit_only = Some(true);
         self
     }
 
     /// Return whether this filter is empty (matches everything).
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.from_ts.is_none()
             && self.to_ts.is_none()
@@ -125,7 +133,7 @@ impl EventFilter {
     }
 }
 
-/// SQL query builder for ClickHouse and DuckDB.
+/// SQL query builder for `ClickHouse` and `DuckDB`.
 ///
 /// Handles parameterized queries to prevent SQL injection.
 /// Never constructs SQL strings directly from user input.
@@ -150,6 +158,7 @@ impl QueryBuilder {
     /// Build a SELECT query for events with tenant isolation.
     ///
     /// Always injects `AND tenant_id = ?` to enforce gate 2 of multi-tenancy isolation.
+    #[must_use]
     pub fn select_events(filter: Option<&EventFilter>, tenant_id: &str, limit: u32) -> Self {
         let mut sql = String::from("SELECT * FROM events WHERE tenant_id = ?");
         let mut params = vec![QueryParam::String(tenant_id.to_string())];
@@ -206,12 +215,13 @@ impl QueryBuilder {
         }
 
         sql.push_str(" ORDER BY ts DESC LIMIT ?");
-        params.push(QueryParam::Int(limit as i64));
+        params.push(QueryParam::Int(i64::from(limit)));
 
         Self { sql, params }
     }
 
     /// Build a SELECT query for alerts with tenant isolation.
+    #[must_use]
     pub fn select_alerts(tenant_id: &str, limit: u32, offset: u32) -> Self {
         let sql = String::from(
             "SELECT * FROM alerts WHERE tenant_id = ? \
@@ -219,14 +229,15 @@ impl QueryBuilder {
         );
         let params = vec![
             QueryParam::String(tenant_id.to_string()),
-            QueryParam::Int(limit as i64),
-            QueryParam::Int(offset as i64),
+            QueryParam::Int(i64::from(limit)),
+            QueryParam::Int(i64::from(offset)),
         ];
 
         Self { sql, params }
     }
 
     /// Build a SELECT query for a single event by ID (with tenant isolation).
+    #[must_use]
     pub fn get_event(tenant_id: &str, event_id: &str) -> Self {
         let sql = String::from("SELECT * FROM events WHERE tenant_id = ? AND event_id = ?");
         let params = vec![
@@ -238,6 +249,7 @@ impl QueryBuilder {
     }
 
     /// Build a SELECT query for a single alert by ID (with tenant isolation).
+    #[must_use]
     pub fn get_alert(tenant_id: &str, alert_id: &str) -> Self {
         let sql = String::from("SELECT * FROM alerts WHERE tenant_id = ? AND alert_id = ?");
         let params = vec![
@@ -249,6 +261,7 @@ impl QueryBuilder {
     }
 
     /// Build an INSERT query for events.
+    #[must_use]
     pub fn insert_events(tenant_id: &str, event_count: usize) -> Self {
         // Placeholder: actual implementation will construct the full INSERT
         // with all 60+ event fields. This is a simplified version.

@@ -14,7 +14,7 @@ use tracing::{debug, info, warn};
 pub struct Migration {
     /// Version number extracted from filename (e.g., 1 from `001_create_events.sql`).
     pub version: i32,
-    /// Human-readable name extracted from filename (e.g., "create_events").
+    /// Human-readable name extracted from filename (e.g., `"create_events"`).
     pub name: String,
     /// Raw SQL content.
     pub sql: String,
@@ -25,7 +25,7 @@ pub struct Migration {
 /// Load all migration files from the given directory.
 ///
 /// Files are sorted by version number. Only files matching `NNN_*.sql` are loaded.
-/// ClickHouse-specific files (`*_ch.sql`) are excluded when loading DuckDB migrations
+/// `ClickHouse`-specific files (`*_ch.sql`) are excluded when loading `DuckDB` migrations
 /// and vice versa.
 ///
 /// # Arguments
@@ -42,10 +42,10 @@ pub fn load_migrations(dir: &str, backend: &str) -> Result<Vec<Migration>, Strin
 
     let mut entries: Vec<std::fs::DirEntry> = std::fs::read_dir(path)
         .map_err(|e| format!("failed to read migrations dir: {e}"))?
-        .filter_map(|entry| entry.ok())
+        .filter_map(std::result::Result::ok)
         .collect();
 
-    entries.sort_by_key(|e| e.file_name());
+    entries.sort_by_key(std::fs::DirEntry::file_name);
 
     let mut migrations = Vec::new();
 
@@ -69,15 +69,12 @@ pub fn load_migrations(dir: &str, backend: &str) -> Result<Vec<Migration>, Strin
         }
 
         // Parse version number from filename (NNN_name.sql)
-        let version = match name_str.split('_').next() {
-            Some(v) => match v.parse::<i32>() {
-                Ok(n) => n,
-                Err(_) => {
-                    warn!(file = %name_str, "Skipping migration file with non-numeric prefix");
-                    continue;
-                }
-            },
-            None => continue,
+        let Some(prefix) = name_str.split('_').next() else {
+            continue;
+        };
+        let Ok(version) = prefix.parse::<i32>() else {
+            warn!(file = %name_str, "Skipping migration file with non-numeric prefix");
+            continue;
         };
 
         // Extract name (strip version prefix and .sql suffix)
@@ -88,7 +85,7 @@ pub fn load_migrations(dir: &str, backend: &str) -> Result<Vec<Migration>, Strin
             .to_string();
 
         let sql = std::fs::read_to_string(entry.path())
-            .map_err(|e| format!("failed to read {}: {e}", name_str))?;
+            .map_err(|e| format!("failed to read {name_str}: {e}"))?;
 
         let checksum = compute_checksum(&sql);
 
@@ -121,7 +118,11 @@ fn compute_checksum(sql: &str) -> String {
 mod hex {
     /// Encode bytes as lowercase hex string.
     pub fn encode(bytes: impl AsRef<[u8]>) -> String {
-        bytes.as_ref().iter().map(|b| format!("{b:02x}")).collect()
+        use std::fmt::Write as _;
+        bytes.as_ref().iter().fold(String::new(), |mut s, b| {
+            let _ = write!(s, "{b:02x}");
+            s
+        })
     }
 }
 

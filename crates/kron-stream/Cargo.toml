@@ -11,6 +11,10 @@ description = "Stream detection engine for KRON — SIGMA rules, IOC bloom filte
 name = "kron-stream"
 path = "src/main.rs"
 
+[lib]
+name = "kron_stream"
+path = "src/lib.rs"
+
 [dependencies]
 kron-types = { path = "../kron-types" }
 kron-bus = { path = "../kron-bus" }
@@ -21,6 +25,16 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+regex = { workspace = true }
+uuid = { workspace = true }
+once_cell = { workspace = true }
+dashmap = { workspace = true }
+metrics = { workspace = true }
+metrics-exporter-prometheus = { workspace = true }
+chrono = { workspace = true }
 
 [lints]
 workspace = true

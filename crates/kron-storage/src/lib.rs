@@ -1,6 +1,6 @@
 //! `kron-storage` — Storage abstraction for the KRON SIEM platform.
 //!
-//! Abstracts ClickHouse (Standard/Enterprise) and DuckDB (Nano) behind a
+//! Abstracts `ClickHouse` (Standard/Enterprise) and `DuckDB` (Nano) behind a
 //! single [`StorageEngine`] trait. All SQL strings live in this crate — no
 //! other crate may construct SQL directly (see `CLAUDE.md` prime directive 7).
 //!
@@ -15,9 +15,9 @@
 //!
 //! - [`traits`] — `StorageEngine` trait definition and `AuditLogEntry`
 //! - [`query`] — `EventFilter`, `QueryBuilder` with parameterized queries
-//! - [`adaptive`] — `AdaptiveStorage` picks ClickHouse or DuckDB from config
-//! - [`duckdb`] — DuckDB implementation (Nano tier)
-//! - [`clickhouse`] — ClickHouse implementation (Standard/Enterprise)
+//! - [`adaptive`] — `AdaptiveStorage` picks `ClickHouse` or `DuckDB` from config
+//! - [`duckdb`] — `DuckDB` implementation (Nano tier)
+//! - [`clickhouse`] — `ClickHouse` implementation (Standard/Enterprise)
 //!
 //! # Usage
 //!

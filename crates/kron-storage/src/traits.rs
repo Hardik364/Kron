@@ -1,6 +1,6 @@
 //! Core `StorageEngine` trait and associated types.
 //!
-//! All storage implementations (DuckDB, ClickHouse) must implement this trait.
+//! All storage implementations (`DuckDB`, `ClickHouse`) must implement this trait.
 //! The trait enforces tenant isolation at the type level.
 
 use crate::query::EventFilter;
@@ -14,7 +14,7 @@ pub type StorageResult<T> = Result<T, KronError>;
 ///
 /// The trait is async-aware and returns `StorageResult<T>`. Implementations must:
 /// - Inject `tenant_id` into every query (via [`QueryRewriter`](crate::query::QueryRewriter))
-/// - Never trust tenant_id from request body — always use [`TenantContext`]
+/// - Never trust `tenant_id` from request body — always use [`TenantContext`]
 /// - Log all failures with context
 /// - Implement connection pooling and retry logic (internal to the backend)
 #[async_trait]
@@ -22,7 +22,7 @@ pub trait StorageEngine: Send + Sync {
     /// Insert a batch of events into the events table.
     ///
     /// # Arguments
-    /// * `ctx` - Tenant context (provides tenant_id for isolation)
+    /// * `ctx` - Tenant context (provides `tenant_id` for isolation)
     /// * `events` - Vector of events to insert
     ///
     /// # Returns
@@ -31,7 +31,7 @@ pub trait StorageEngine: Send + Sync {
     ///
     /// # Tenant Isolation
     /// The implementation MUST verify that all events in the batch have `event.tenant_id == ctx.tenant_id()`.
-    /// If any event has a mismatched tenant_id, return `KronError::TenantIsolationViolation`.
+    /// If any event has a mismatched `tenant_id`, return `KronError::TenantIsolationViolation`.
     async fn insert_events(
         &self,
         ctx: &TenantContext,
@@ -47,7 +47,7 @@ pub trait StorageEngine: Send + Sync {
     /// Query events for a tenant with optional filtering.
     ///
     /// # Arguments
-    /// * `ctx` - Tenant context (provides tenant_id for isolation)
+    /// * `ctx` - Tenant context (provides `tenant_id` for isolation)
     /// * `filter` - Optional filter (timestamp range, event type, etc.)
     /// * `limit` - Max rows to return (prevents unbounded queries)
     ///
@@ -56,6 +56,9 @@ pub trait StorageEngine: Send + Sync {
     ///
     /// # Tenant Isolation
     /// All queries automatically inject `AND tenant_id = ?` — no cross-tenant leakage possible.
+    ///
+    /// # Errors
+    /// Returns `KronError::Storage` if the query fails.
     async fn query_events(
         &self,
         ctx: &TenantContext,
@@ -162,20 +165,20 @@ pub trait StorageEngine: Send + Sync {
 
 /// Simple audit log entry structure.
 ///
-/// This will be expanded to match the `audit_log` table schema in Database.md.
+/// This will be expanded to match the `audit_log` table schema in `Database.md`.
 #[derive(Clone, Debug)]
 pub struct AuditLogEntry {
     /// User/service performing the action.
     pub actor_id: String,
-    /// 'human', 'service', or 'system'.
+    /// `'human'`, `'service'`, or `'system'`.
     pub actor_type: String,
-    /// Action performed: 'view_event', 'update_alert', 'run_query', etc.
+    /// Action performed: `'view_event'`, `'update_alert'`, `'run_query'`, etc.
     pub action: String,
-    /// Resource type: 'event', 'alert', 'rule', etc.
+    /// Resource type: `'event'`, `'alert'`, `'rule'`, etc.
     pub resource_type: Option<String>,
-    /// Resource ID (event_id, alert_id, rule_id, etc.).
+    /// Resource ID (`event_id`, `alert_id`, `rule_id`, etc.).
     pub resource_id: Option<String>,
-    /// 'success', 'failure', or 'denied'.
+    /// `'success'`, `'failure'`, or `'denied'`.
     pub result: String,
     /// Optional detail message.
     pub detail: Option<String>,

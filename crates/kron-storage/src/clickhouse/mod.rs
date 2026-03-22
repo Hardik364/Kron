@@ -1,11 +1,11 @@
-//! ClickHouse implementation of [`StorageEngine`].
+//! `ClickHouse` implementation of [`StorageEngine`].
 //!
 //! Used for Standard and Enterprise tier deployments.
 //! The `clickhouse::Client` manages an internal HTTP connection pool;
 //! all operations go through exponential-backoff retry and a circuit breaker.
 //!
 //! # Modules
-//! - [`rows`] — Row structs and KronEvent ↔ ChEventRow conversions.
+//! - [`rows`] — Row structs and `KronEvent` ↔ `ChEventRow` conversions.
 //! - [`retry`] — [`CircuitBreaker`] and [`with_ch_retry`] helper.
 
 mod retry;
@@ -27,7 +27,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tracing::instrument;
 
-/// ClickHouse storage engine for Standard and Enterprise tiers.
+/// `ClickHouse` storage engine for Standard and Enterprise tiers.
 ///
 /// Wraps a `clickhouse::Client` with circuit-breaker protection and retry logic.
 /// The client handles HTTP connection pooling internally.
@@ -45,16 +45,16 @@ pub struct ClickHouseEngine {
 }
 
 impl ClickHouseEngine {
-    /// Create and connect a ClickHouse storage engine.
+    /// Create and connect a `ClickHouse` storage engine.
     ///
     /// Verifies connectivity with `SELECT 1` before returning.
     ///
     /// # Arguments
-    /// * `config` - Full ClickHouse configuration (URL, credentials, timeouts).
+    /// * `config` - Full `ClickHouse` configuration (URL, credentials, timeouts).
     /// * `migrations_dir` - Path to the directory containing `*_ch.sql` files.
     ///
     /// # Errors
-    /// Returns `KronError::Storage` if ClickHouse is unreachable at startup.
+    /// Returns `KronError::Storage` if `ClickHouse` is unreachable at startup.
     pub async fn new(config: &ClickHouseConfig, migrations_dir: &str) -> StorageResult<Self> {
         tracing::info!(
             url = %config.url,
@@ -179,7 +179,8 @@ impl ClickHouseEngine {
     }
 
     /// Build a SELECT query string for events with tenant isolation and optional filter.
-    fn build_events_select(filter: &Option<EventFilter>, limit: u32) -> String {
+    fn build_events_select(filter: Option<&EventFilter>, limit: u32) -> String {
+        use std::fmt::Write as _;
         let mut sql = "SELECT ?fields FROM events WHERE tenant_id = ?".to_string();
 
         if let Some(f) = filter {
@@ -215,7 +216,7 @@ impl ClickHouseEngine {
             }
         }
 
-        sql.push_str(&format!(" ORDER BY ts DESC LIMIT {limit}"));
+        let _ = write!(sql, " ORDER BY ts DESC LIMIT {limit}");
         sql
     }
 
@@ -223,16 +224,16 @@ impl ClickHouseEngine {
     ///
     /// `row_hash = SHA256(prev_hash || action || actor_id || ts_nanos)`
     fn compute_audit_hash(prev_hash: &str, action: &str, actor_id: &str, ts_nanos: i64) -> String {
+        use std::fmt::Write as _;
         let mut hasher = sha2::Sha256::new();
         hasher.update(prev_hash.as_bytes());
         hasher.update(action.as_bytes());
         hasher.update(actor_id.as_bytes());
         hasher.update(ts_nanos.to_le_bytes());
-        hasher
-            .finalize()
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect()
+        hasher.finalize().iter().fold(String::new(), |mut s, b| {
+            let _ = write!(s, "{b:02x}");
+            s
+        })
     }
 }
 
@@ -311,7 +312,7 @@ impl StorageEngine for ClickHouseEngine {
         limit: u32,
     ) -> StorageResult<Vec<KronEvent>> {
         let tenant_id = ctx.tenant_id();
-        let sql = Self::build_events_select(&filter, limit);
+        let sql = Self::build_events_select(filter.as_ref(), limit);
 
         let cb = self.circuit_breaker.clone();
         let client = self.client.clone();
@@ -673,7 +674,7 @@ mod tests {
 
     #[test]
     fn test_build_events_select_always_has_tenant_id() {
-        let sql = ClickHouseEngine::build_events_select(&None, 100);
+        let sql = ClickHouseEngine::build_events_select(None, 100);
         assert!(sql.contains("tenant_id = ?"));
         assert!(sql.contains("LIMIT 100"));
     }
@@ -684,7 +685,7 @@ mod tests {
             .with_event_type("process_create".to_string())
             .with_hostname("host-a".to_string())
             .ioc_hits_only();
-        let sql = ClickHouseEngine::build_events_select(&Some(filter), 50);
+        let sql = ClickHouseEngine::build_events_select(Some(&filter), 50);
         assert!(sql.contains("event_type = ?"));
         assert!(sql.contains("hostname = ?"));
         assert!(sql.contains("ioc_hit = true"));

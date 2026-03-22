@@ -1,10 +1,10 @@
 //! Adaptive storage backend selection.
 //!
 //! [`AdaptiveStorage`] reads the [`KronConfig`] and instantiates
-//! either DuckDB or ClickHouse based on the deployment mode.
+//! either `DuckDB` or `ClickHouse` based on the deployment mode.
 //!
-//! This enables the same code to work across Nano (DuckDB),
-//! Standard (ClickHouse), and Enterprise (ClickHouse sharded) deployments.
+//! This enables the same code to work across Nano (`DuckDB`),
+//! Standard (`ClickHouse`), and Enterprise (`ClickHouse` sharded) deployments.
 
 use crate::clickhouse::ClickHouseEngine;
 use crate::duckdb::DuckDbEngine;
@@ -21,7 +21,7 @@ enum BackendEnum {
     ClickHouse(std::sync::Arc<ClickHouseEngine>),
 }
 
-/// Adaptive storage engine that selects DuckDB or ClickHouse from config.
+/// Adaptive storage engine that selects `DuckDB` or `ClickHouse` from config.
 ///
 /// # Usage
 /// ```ignore
@@ -44,9 +44,12 @@ impl AdaptiveStorage {
     /// # Returns
     /// Initialized storage engine, or error if backend cannot be reached.
     ///
+    /// # Errors
+    /// Returns `KronError::Storage` if the selected backend cannot be reached or initialized.
+    ///
     /// # Deployment Mode Selection
-    /// - Nano → DuckDB at `config.duckdb.path`
-    /// - Standard/Enterprise → ClickHouse at `config.clickhouse.url`
+    /// - Nano → `DuckDB` at `config.duckdb.path`
+    /// - Standard/Enterprise → `ClickHouse` at `config.clickhouse.url`
     pub async fn new(config: &KronConfig) -> StorageResult<Self> {
         let backend = match config.mode {
             DeploymentMode::Nano => {

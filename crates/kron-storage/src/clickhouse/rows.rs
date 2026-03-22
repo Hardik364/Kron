@@ -1,6 +1,6 @@
-//! ClickHouse row structs and conversion functions.
+//! `ClickHouse` row structs and conversion functions.
 //!
-//! Each struct maps one-to-one to a ClickHouse table schema.
+//! Each struct maps one-to-one to a `ClickHouse` table schema.
 //! All timestamps are stored as nanoseconds (Int64) for DateTime64(9).
 //! IPs are stored as String for driver compatibility.
 //! Arrays and maps are stored as JSON strings.
@@ -34,7 +34,7 @@ pub struct SchemaVersionQueryRow {
 
 // ─── Events ─────────────────────────────────────────────────────────────────
 
-/// ClickHouse row mapping the `events` table.
+/// `ClickHouse` row mapping the `events` table.
 ///
 /// All 60+ fields from the KRON event schema.
 /// Timestamps are nanoseconds since Unix epoch (Int64 / DateTime64(9)).
@@ -151,9 +151,9 @@ pub fn event_to_ch_row(event: &KronEvent) -> StorageResult<ChEventRow> {
         user_name: event.user_name.clone(),
         user_id: event.user_id.clone(),
         user_domain: event.user_domain.clone(),
-        user_type: event.user_type.as_ref().map(|t| t.to_string()),
+        user_type: event.user_type.as_ref().map(ToString::to_string),
         event_type: event.event_type.clone(),
-        event_category: event.event_category.as_ref().map(|c| c.to_string()),
+        event_category: event.event_category.as_ref().map(ToString::to_string),
         event_action: event.event_action.clone(),
         src_ip: event.src_ip.map(|ip| ip.to_string()),
         src_ip6: event.src_ip6.map(|ip| ip.to_string()),
@@ -166,7 +166,7 @@ pub fn event_to_ch_row(event: &KronEvent) -> StorageResult<ChEventRow> {
         bytes_out: event.bytes_out,
         packets_in: event.packets_in,
         packets_out: event.packets_out,
-        direction: event.direction.as_ref().map(|d| d.to_string()),
+        direction: event.direction.as_ref().map(ToString::to_string),
         process_name: event.process_name.clone(),
         process_pid: event.process_pid,
         process_ppid: event.process_ppid,
@@ -178,8 +178,8 @@ pub fn event_to_ch_row(event: &KronEvent) -> StorageResult<ChEventRow> {
         file_name: event.file_name.clone(),
         file_hash: event.file_hash.clone(),
         file_size: event.file_size,
-        file_action: event.file_action.as_ref().map(|a| a.to_string()),
-        auth_result: event.auth_result.as_ref().map(|a| a.to_string()),
+        file_action: event.file_action.as_ref().map(ToString::to_string),
+        auth_result: event.auth_result.as_ref().map(ToString::to_string),
         auth_method: event.auth_method.clone(),
         auth_protocol: event.auth_protocol.clone(),
         src_country: event.src_country.clone(),
@@ -205,16 +205,22 @@ pub fn event_to_ch_row(event: &KronEvent) -> StorageResult<ChEventRow> {
     })
 }
 
-/// Convert a [`ChEventRow`] read from ClickHouse back to a [`KronEvent`].
+/// Parse the identity and timestamp fields from a [`ChEventRow`].
 ///
 /// # Errors
-/// Returns `KronError::Parse` if required ID fields are not valid UUIDs.
-pub fn ch_row_to_event(row: ChEventRow) -> StorageResult<KronEvent> {
+/// Returns `KronError::Parse` if UUIDs are malformed or timestamps are out of range.
+fn parse_row_identity(
+    row: &ChEventRow,
+) -> StorageResult<(
+    EventId,
+    TenantId,
+    chrono::DateTime<chrono::Utc>,
+    chrono::DateTime<chrono::Utc>,
+)> {
     let event_id = EventId::from_str(&row.event_id)
         .map_err(|e| KronError::Parse(format!("invalid event_id UUID: {e}")))?;
     let tenant_id = TenantId::from_str(&row.tenant_id)
         .map_err(|e| KronError::Parse(format!("invalid tenant_id UUID: {e}")))?;
-
     let ts = nanos_to_datetime(row.ts)
         .ok_or_else(|| KronError::Parse(format!("event ts {} out of range", row.ts)))?;
     let ts_received = nanos_to_datetime(row.ts_received).ok_or_else(|| {
@@ -223,6 +229,15 @@ pub fn ch_row_to_event(row: ChEventRow) -> StorageResult<KronEvent> {
             row.ts_received
         ))
     })?;
+    Ok((event_id, tenant_id, ts, ts_received))
+}
+
+/// Convert a [`ChEventRow`] read from `ClickHouse` back to a [`KronEvent`].
+///
+/// # Errors
+/// Returns `KronError::Parse` if required ID fields are not valid UUIDs.
+pub fn ch_row_to_event(row: ChEventRow) -> StorageResult<KronEvent> {
+    let (event_id, tenant_id, ts, ts_received) = parse_row_identity(&row)?;
 
     let fields: std::collections::HashMap<String, String> =
         serde_json::from_str(&row.fields).unwrap_or_default();
@@ -318,7 +333,7 @@ pub fn ch_row_to_event(row: ChEventRow) -> StorageResult<KronEvent> {
 
 // ─── Audit log ───────────────────────────────────────────────────────────────
 
-/// ClickHouse row mapping the `audit_log` table.
+/// `ClickHouse` row mapping the `audit_log` table.
 #[derive(clickhouse::Row, Serialize, Deserialize)]
 pub struct ChAuditLogRow {
     pub audit_id: String,
@@ -342,10 +357,13 @@ pub struct ChAuditLogRow {
 
 // ─── Alerts (Phase 2.5 placeholder) ─────────────────────────────────────────
 
-/// ClickHouse row for the `alerts` table.
+/// `ClickHouse` row for the `alerts` table.
 ///
 /// Alert INSERT/SELECT is fully implemented in Phase 2.5 (kron-alert).
 /// This struct exists so that the CH schema compiles and migrations pass.
+// Notification flags (dpdp_applicable, whatsapp_sent, sms_sent, email_sent) map directly
+// to the DB schema columns and cannot be collapsed into a bitfield without a schema change.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, clickhouse::Row, Serialize, Deserialize)]
 pub struct ChAlertRow {
     pub alert_id: String,
@@ -446,7 +464,7 @@ pub fn alert_to_ch_row(alert: &KronAlert) -> StorageResult<ChAlertRow> {
         resolved_at: alert.resolved_at.map(|t| t.timestamp_millis()),
         resolved_by: alert.resolved_by.clone(),
         resolution_notes: alert.resolution_notes.clone(),
-        case_id: alert.case_id.as_ref().map(|id| id.to_string()),
+        case_id: alert.case_id.as_ref().map(ToString::to_string),
         cert_in_category: alert.cert_in_category.clone(),
         rbi_control: alert.rbi_control.clone(),
         dpdp_applicable: alert.dpdp_applicable,
