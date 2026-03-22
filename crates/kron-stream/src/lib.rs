@@ -10,4 +10,5 @@
 //! - [`sigma`] — Rule parsing, compilation, matching, registry, and evaluation
 
 pub mod error;
+pub mod ioc;
 pub mod sigma;

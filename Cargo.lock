@@ -2032,6 +2032,7 @@ dependencies = [
  "metrics-exporter-prometheus",
  "once_cell",
  "regex",
+ "reqwest",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -2040,6 +2041,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+ "xxhash-rust",
 ]
 
 [[package]]

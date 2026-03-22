@@ -35,6 +35,8 @@ dashmap = { workspace = true }
 metrics = { workspace = true }
 metrics-exporter-prometheus = { workspace = true }
 chrono = { workspace = true }
+xxhash-rust = { workspace = true }
+reqwest = { workspace = true }
 
 [lints]
 workspace = true
