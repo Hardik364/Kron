@@ -230,14 +230,14 @@ cargo test -p kron-normalizer
 
 ### 1.7 CLI Tool (`kron-ctl`)
 
-- [ ] `kron-ctl health` — check all services
-- [ ] `kron-ctl events query --tenant X --from Y --to Z --limit N` — query events
-- [ ] `kron-ctl events tail --tenant X` — live tail events
-- [ ] `kron-ctl agents list` — show registered agents and status
-- [ ] `kron-ctl agent-token create` — generate agent registration token
-- [ ] `kron-ctl storage stats` — ClickHouse storage usage
-- [ ] `kron-ctl migration run` — apply pending migrations
-- [ ] `kron-ctl migration status` — show migration state
+- [x] `kron-ctl health` — check all services
+- [x] `kron-ctl events query --tenant X --from Y --to Z --limit N` — query events
+- [x] `kron-ctl events tail --tenant X` — live tail events
+- [x] `kron-ctl agents list` — show registered agents and status
+- [x] `kron-ctl agents create --hostname X` — pre-register agent (returns agent_id)
+- [x] `kron-ctl storage stats` — storage backend statistics
+- [x] `kron-ctl migration run` — apply pending migrations
+- [x] `kron-ctl migration status` — show migration state
 
 **Acceptance criteria:**
 ```bash

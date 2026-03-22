@@ -396,3 +396,58 @@ The human updates this after each session, or Claude updates it at the end of ea
 2. **Phase 1.7 (kron-ctl):** CLI tool — health, events query/tail, agents list, storage stats, migration commands
 3. After Phase 1.7: run Phase 1 Gate acceptance test (`./scripts/phase1-acceptance.sh`)
 4. Run `cargo check --workspace` to verify all crates compile together before starting 1.7
+
+---
+
+## Session: 2026-03-22 — Phase 1.7 CLI Tool (kron-ctl) Complete
+
+### Completed
+- **Phase 1.7 (kron-ctl):** All 8 tasks implemented, `cargo check -p kron-ctl` passes clean
+  - `error.rs`: `CtlError` enum (6 variants — Config, Storage, Http, Serialise, InvalidArg, Migration)
+  - `output.rs`: ASCII table renderer + status line helpers (ok/fail/warn/header) — no external crates
+  - `config.rs`: `CtlConfig::load(path, collector_url_override)` — derives collector base URL from `CollectorConfig.http_addr` (replaces `0.0.0.0` with `127.0.0.1`)
+  - `client.rs`: `CollectorClient` wrapping reqwest — `health()`, `list_agents()`, `register_agent()` — typed request/response structs
+  - `cmd/health.rs`: Checks collector `/health` + storage `health_check()` in sequence, prints status lines
+  - `cmd/events.rs`: `run_query()` (table or JSON output, RFC 3339 / relative timestamp parsing: 1h, 30m, 7d) and `run_tail()` (polling loop, prints new events as they arrive)
+  - `cmd/agents.rs`: `run_list()` (GET /agents → table) and `run_create()` (POST /agents/register → prints assigned agent_id)
+  - `cmd/storage.rs`: `run_stats()` — storage backend name, health, latency stats, deployment mode, DB path/URL
+  - `cmd/migration.rs`: `run_migrate()` (creates AdaptiveStorage → triggers idempotent migration run) and `run_status()` (loads migration files from disk, prints version/name/checksum table)
+  - `main.rs`: clap 4 derive-based CLI dispatcher — all 8 top-level tasks routed correctly
+  - `Cargo.toml` (workspace): Added `clap = { version = "4", features = ["derive"] }` and `reqwest = { version = "0.12", features = ["json"], default-features = false }`
+  - `Cargo.toml` (workspace): Fixed `pedantic = { level = "warn", priority = -1 }` to resolve `lint_groups_priority` clippy error (pre-existing issue)
+
+### Decisions Made
+- `kron-ctl` talks to collector via HTTP only (no direct bus connection)
+- Events query/tail goes through `AdaptiveStorage` directly — no separate query API (Phase 3)
+- Agent tokens in Phase 1.7 = pre-register agent ID via `POST /agents/register`; full token registry in Phase 3
+- Relative timestamp parsing supports `s`, `m`, `h`, `d` suffixes (e.g. `1h` = 1 hour ago)
+- Collector URL defaults: `0.0.0.0:9002` → `http://127.0.0.1:9002`; overridable via `--collector-url`
+
+### Code Written
+- `crates/kron-ctl/src/error.rs` — `CtlError`
+- `crates/kron-ctl/src/output.rs` — `Table`, `ok`, `fail`, `warn`, `header`
+- `crates/kron-ctl/src/config.rs` — `CtlConfig`
+- `crates/kron-ctl/src/client.rs` — `CollectorClient` + typed structs
+- `crates/kron-ctl/src/cmd/health.rs` — health check command
+- `crates/kron-ctl/src/cmd/events.rs` — query + tail commands
+- `crates/kron-ctl/src/cmd/agents.rs` — list + create commands
+- `crates/kron-ctl/src/cmd/storage.rs` — stats command
+- `crates/kron-ctl/src/cmd/migration.rs` — run + status commands
+- `crates/kron-ctl/src/cmd/mod.rs` — module declarations
+- Rewritten: `crates/kron-ctl/src/main.rs` — clap CLI dispatcher
+- Modified: `crates/kron-ctl/Cargo.toml` — added clap, reqwest, serde, serde_json, chrono, uuid
+- Modified: `Cargo.toml` (workspace) — added clap + reqwest; fixed lint_groups_priority
+
+### Known Issues / Tech Debt
+- `events tail` uses polling (2s by default) — not a real streaming tail; proper streaming needs WebSocket (Phase 3)
+- `migration status` cannot show which migrations have already been applied (no live DB connection needed to load files, but schema_versions table would require full storage init)
+- `storage stats` latency stats show zeros until real storage operations are recorded — stubs return 0
+
+### Open Questions
+- None blocking Phase 1.7
+
+### Next Session Should Start With
+1. Read CLAUDE.md, PHASES.md, CONTEXT.md
+2. All of Phase 1 is now complete (1.1 through 1.7)
+3. Run the Phase 1 Gate acceptance test: `./scripts/phase1-acceptance.sh`
+4. If gate passes, begin Phase 2 — Detection Engine (kron-stream, SIGMA rules, IOC bloom filter, ONNX)

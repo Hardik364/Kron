@@ -83,6 +83,8 @@ uuid = { version = "1", features = ["v4", "serde"] }
 # TODO(#1, hardik, v1.1): Remove chrono upper bound when duckdb is upgraded
 chrono = { version = ">=0.4, <0.4.38", features = ["serde"] }
 regex = "1"
+reqwest = { version = "0.12", features = ["json"], default-features = false }
+clap = { version = "4", features = ["derive"] }
 serde_yaml = "0.9"
 toml = "0.8"
 bytes = "1"
@@ -109,7 +111,7 @@ debug = true
 unsafe_code = "forbid" # no unsafe except kron-agent eBPF interop
 
 [workspace.lints.clippy]
-pedantic = "warn"
+pedantic = { level = "warn", priority = -1 }
 unwrap_used = "deny"
 expect_used = "deny"
 panic = "deny"
