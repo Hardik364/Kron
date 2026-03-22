@@ -367,7 +367,7 @@ pub struct CollectorConfig {
     pub grpc_addr: String,
     /// Syslog UDP listen address (RFC 3164 / RFC 5424).
     pub syslog_udp_addr: String,
-    /// Syslog TCP listen address (with TLS).
+    /// Syslog TCP listen address (plaintext; TLS added in Phase 2).
     pub syslog_tcp_addr: String,
     /// HTTP intake listen address (`POST /intake/v1/events`).
     pub http_addr: String,
@@ -375,6 +375,25 @@ pub struct CollectorConfig {
     pub max_eps_per_agent: u32,
     /// Duration after which a silent agent is marked "dark", in seconds.
     pub agent_heartbeat_timeout_secs: u64,
+    /// Path to the collector's TLS server certificate (PEM).
+    pub tls_cert_path: PathBuf,
+    /// Path to the collector's TLS server private key (PEM).
+    pub tls_key_path: PathBuf,
+    /// Path to the CA certificate used to verify agent client certs (PEM).
+    pub tls_ca_path: PathBuf,
+    /// Default tenant UUID string for syslog and HTTP intake sources.
+    ///
+    /// Events received over syslog or HTTP (Phase 1.5) are tagged with this tenant.
+    /// Phase 3 replaces this with per-token tenant assignment.
+    // TODO(#TBD, hardik, phase-3): Replace with per-token tenant mapping
+    pub default_tenant_id: String,
+    /// Pre-shared Bearer token required for `POST /intake/v1/events`.
+    ///
+    /// Phase 3 replaces this with a proper token registry.
+    // TODO(#TBD, hardik, phase-3): Replace with per-tenant token registry
+    pub intake_auth_token: String,
+    /// Prometheus metrics bind address for the collector.
+    pub metrics_addr: String,
 }
 
 impl CollectorConfig {
@@ -394,6 +413,12 @@ impl Default for CollectorConfig {
             http_addr: "0.0.0.0:9002".to_string(),
             max_eps_per_agent: 100_000,
             agent_heartbeat_timeout_secs: 90,
+            tls_cert_path: PathBuf::from("/var/lib/kron/collector/server.crt"),
+            tls_key_path: PathBuf::from("/var/lib/kron/collector/server.key"),
+            tls_ca_path: PathBuf::from("/var/lib/kron/collector/ca.crt"),
+            default_tenant_id: String::new(),
+            intake_auth_token: String::new(),
+            metrics_addr: "127.0.0.1:9102".to_string(),
         }
     }
 }

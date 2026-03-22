@@ -276,3 +276,66 @@ The human updates this after each session, or Claude updates it at the end of ea
 2. **Phase 1.4 (kron-agent):** eBPF agent implementation
    - Note: requires Linux kernel 5.4+ with BTF — CI will validate, not local Windows dev
 3. Run `cargo check --workspace` to verify Phase 1.3 compiles cleanly
+
+
+---
+
+## Session: 2026-03-22 — Phase 1.5 Collector (kron-collector) Complete
+
+### Completed
+- **Phase 1.5 (kron-collector):** All 10 tasks implemented, `cargo check -p kron-collector` passes clean
+  - `error.rs`: `CollectorError` enum (9 variants, thiserror)
+  - `metrics.rs`: Prometheus functions for events received/published/rejected, agent registration/dark, heartbeat, rate-limited, batch size, publish latency
+  - `shutdown.rs`: `ShutdownHandle` with broadcast channel + Ctrl-C signal listener
+  - `codec.rs`: Server-side JSON codec mirroring agent's codec — `JsonCodec<Req, Res>` + type aliases for 3 RPCs
+  - `registry.rs`: `AgentRegistry` (in-memory, hostname-deduped) + `AgentRateLimiter` (1-second sliding window token bucket) — 8 unit tests
+  - `grpc.rs`: `CollectorGrpcService` as `tower::Service<http::Request<B>>` routing 3 RPCs (Register, SendEvents, Heartbeat) via `tonic::server::Grpc::new(codec).unary(svc, req)` — no protoc required
+  - `syslog.rs`: UDP + TCP syslog receivers, RFC 3164 + RFC 5424 in-house parser, publishes to `kron.raw.{tenant_id}` — 7 unit tests
+  - `http_intake.rs`: Axum router with 5 routes, Bearer auth, agent management API — publishes events to bus
+  - `collector.rs`: Orchestrator spawning 5 async tasks (gRPC, HTTP, syslog UDP/TCP, dark-agent monitor), mTLS with graceful plaintext fallback
+  - `main.rs`: CLI args, tracing init, tokio runtime, `Collector::new(config, shutdown).run()`
+  - `kron-types/src/config.rs`: Added `CollectorConfig` fields: `tls_cert_path`, `tls_key_path`, `tls_ca_path`, `default_tenant_id`, `intake_auth_token`, `metrics_addr`
+  - `kron-bus/src/traits.rs`: Added blanket `impl BusProducer for Box<dyn BusProducer>` to allow `Arc::new(box_producer)` coercion
+
+### Decisions Made
+- gRPC server implemented without protoc: `tower::Service<http::Request<B>>` routes by URI path to `tonic::server::Grpc::new(codec).unary(svc, req)` — exactly matches agent's client codec
+- Tenant ID for gRPC: extracted from `RegisterRequest.labels["tenant_id"]` first, fallback to `config.default_tenant_id`
+- Tenant ID for syslog/HTTP: always uses `config.default_tenant_id` (no per-connection identity)
+- mTLS: `ServerTlsConfig` with client CA root required in production; graceful plaintext fallback if cert files absent (dev mode)
+- TCP syslog TLS deferred to Phase 2 — `TODO(#TBD, hardik, phase-2)` comment in syslog.rs
+- `EventCategory::Other` used for syslog events (no `System` variant in `EventCategory` enum)
+- Dark-agent monitor: read lock for `find_timed_out_agents`, write lock for `mark_dark` — avoids holding write across await
+- `impl BusProducer for Box<dyn BusProducer>` added to kron-bus to enable `Arc::new(bus.new_producer()?)` pattern
+
+### Code Written
+- `crates/kron-collector/src/error.rs` — `CollectorError` enum
+- `crates/kron-collector/src/metrics.rs` — Prometheus metric functions
+- `crates/kron-collector/src/shutdown.rs` — `ShutdownHandle` with broadcast + signal
+- `crates/kron-collector/src/codec.rs` — `JsonCodec` + type aliases
+- `crates/kron-collector/src/registry.rs` — `AgentRegistry` + `AgentRateLimiter` + unit tests
+- `crates/kron-collector/src/grpc.rs` — gRPC service (Register, SendEvents, Heartbeat)
+- `crates/kron-collector/src/syslog.rs` — RFC 3164/5424 parser + UDP/TCP receivers + unit tests
+- `crates/kron-collector/src/http_intake.rs` — Axum HTTP server
+- `crates/kron-collector/src/collector.rs` — orchestrator
+- `crates/kron-collector/src/main.rs` — entry point
+- Modified: `crates/kron-collector/Cargo.toml` — added all dependencies including `http-body = "0.4"`
+- Modified: `crates/kron-types/src/config.rs` — extended `CollectorConfig`
+- Modified: `crates/kron-bus/src/traits.rs` — blanket `BusProducer` impl for `Box<dyn BusProducer>`
+- Modified: `PHASES.md` — Phase 1.5 all tasks marked `[x]`
+
+### Known Issues / Tech Debt
+- 5 dead-code warnings for fields/methods not yet consumed (will be used in Phase 1.6 normalizer): `AgentRecord::registered_at`, `AgentRecord::get()`, `SyslogFields::message`, `CollectorError::Grpc/Tls/Registry/Task`, `ShutdownHandle::trigger()`
+- Integration tests not yet run (need running Redpanda/embedded bus + cert files for mTLS)
+- Syslog TCP TLS is plaintext only — Phase 2 task
+- `server_builder` in grpc spawn requires `mut` because `tonic::Server::builder()` returns owned value and `add_service` takes `&mut self` — fixed in this session
+
+### Open Questions
+- Should `AgentRegistry` be persisted to disk for crash recovery? Currently all state is lost on restart.
+- Should the HTTP agent-management API require auth (currently unauthenticated)? Phase 2 decision.
+
+### Next Session Should Start With
+1. Read CLAUDE.md, PHASES.md, CONTEXT.md
+2. **Phase 1.6 (kron-normalizer):** event parsing, enrichment, normalization pipeline
+   - Reads from `kron.raw.{tenant_id}`, normalizes, writes to `kron.normalized.{tenant_id}`
+   - GeoIP enrichment, FQDN resolution, asset lookup
+3. Run `cargo check --workspace` first to verify all crates still compile together

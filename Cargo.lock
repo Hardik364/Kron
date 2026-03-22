@@ -1735,12 +1735,28 @@ name = "kron-collector"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
+ "axum 0.7.9",
+ "bytes",
+ "chrono",
+ "futures",
+ "http 0.2.12",
+ "http-body 0.4.6",
  "kron-bus",
  "kron-types",
+ "metrics",
+ "metrics-exporter-prometheus",
+ "serde",
+ "serde_json",
  "thiserror",
  "tokio",
+ "toml",
+ "tonic",
+ "tower 0.4.13",
+ "tower-http",
  "tracing",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]
