@@ -434,6 +434,14 @@ pub struct NormalizerConfig {
     pub asset_cache_ttl_secs: u64,
     /// Maximum number of asset records to hold in the enrichment cache.
     pub asset_cache_size: usize,
+    /// Tenant UUIDs whose `kron.raw.{id}` topics this normalizer should consume.
+    /// If empty, the normalizer subscribes to no topics and exits immediately.
+    pub raw_tenant_ids: Vec<String>,
+    /// Consumer group ID for the bus subscriber.
+    pub consumer_group_id: String,
+    /// Prometheus metrics HTTP bind address (e.g. `"0.0.0.0:9092"`).
+    /// Leave empty to disable metrics exposition.
+    pub metrics_addr: String,
 }
 
 impl NormalizerConfig {
@@ -449,8 +457,11 @@ impl Default for NormalizerConfig {
         Self {
             geoip_db_path: PathBuf::from("/var/lib/kron/geoip/GeoLite2-City.mmdb"),
             mappings_dir: PathBuf::from("/var/lib/kron/mappings"),
-            asset_cache_ttl_secs: 5 * 60, // 5 minutes
+            asset_cache_ttl_secs: 5 * 60,
             asset_cache_size: 10_000,
+            raw_tenant_ids: Vec::new(),
+            consumer_group_id: "kron-normalizer".to_owned(),
+            metrics_addr: "0.0.0.0:9092".to_owned(),
         }
     }
 }
