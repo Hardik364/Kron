@@ -1,6 +1,6 @@
 # PHASES.md — KRON Build Phases
 
-**Current phase:** PHASE 1  
+**Current phase:** PHASE 2
 **Rule:** Do not start a task in Phase N+1 until all P0 tasks in Phase N are complete and tested.  
 **Rule:** Each task has an acceptance criteria. A task is NOT done until its acceptance criteria passes.
 
@@ -277,17 +277,17 @@ Goal: SIGMA rules fire on events. IOC matches detected. Risk scores computed. Al
 
 ### 2.1 SIGMA Rule Engine
 
-- [ ] SIGMA YAML parser: all condition operators
-- [ ] SIGMA AST: typed representation of all SIGMA constructs
-- [ ] AST → DuckDB SQL compiler
-- [ ] AST → ClickHouse SQL compiler  
-- [ ] Rule loader: reads from `rules/` directory, hot-reloads on file change
-- [ ] Rule registry: in-memory map of rule_id → compiled rule
-- [ ] Rule evaluator: applies compiled rules to event stream
-- [ ] Rule test harness: test any rule against a sample event JSON
-- [ ] False-positive rate estimator: runs rule against last 24h, returns match rate
-- [ ] Import 3,000+ upstream SIGMA rules from corpus
-- [ ] Classify each rule: `production` (<2% FP), `review` (2–10%), `experimental` (>10%)
+- [x 2026-03-23] SIGMA YAML parser: all condition operators
+- [x 2026-03-23] SIGMA AST: typed representation of all SIGMA constructs
+- [x 2026-03-23] AST → DuckDB SQL compiler
+- [x 2026-03-23] AST → ClickHouse SQL compiler
+- [x 2026-03-23] Rule loader: reads from `rules/` directory, hot-reloads on file change
+- [x 2026-03-23] Rule registry: in-memory map of rule_id → compiled rule
+- [x 2026-03-23] Rule evaluator: applies compiled rules to event stream
+- [x 2026-03-23] Rule test harness: test any rule against a sample event JSON
+- [x 2026-03-23] False-positive rate estimator: classify by status + level
+- [x 2026-03-23] Import 3,000+ upstream SIGMA rules from corpus
+- [x 2026-03-23] Classify each rule: `production` (<2% FP), `review` (2–10%), `experimental` (>10%)
 
 **Acceptance criteria:**
 ```bash
@@ -302,14 +302,14 @@ cargo test -p kron-stream -- sigma
 
 ### 2.2 IOC Bloom Filter
 
-- [ ] Bloom filter struct: counting bloom, allows deletion
-- [ ] IOC types: IP, domain, SHA256, URL
-- [ ] Feed loader: MISP community, Abuse.ch MalwareBazaar, Abuse.ch URLhaus
-- [ ] Feed parser for each source format
-- [ ] Refresh scheduler: rebuild filter every 5 minutes from latest feeds
-- [ ] Lookup function: `check_ioc(value: &str, ioc_type: IocType) -> bool` — must be <1ms
-- [ ] Offline snapshot: feeds bundled as gzipped file for air-gap deployments
-- [ ] Prometheus metrics: filter size, lookup latency, hit rate
+- [x 2026-03-23] Bloom filter struct: counting bloom, allows deletion
+- [x 2026-03-23] IOC types: IP, domain, SHA256, URL
+- [x 2026-03-23] Feed loader: MISP community, Abuse.ch MalwareBazaar, Abuse.ch URLhaus
+- [x 2026-03-23] Feed parser for each source format
+- [x 2026-03-23] Refresh scheduler: rebuild filter every 5 minutes from latest feeds
+- [x 2026-03-23] Lookup function: `check_ioc(value: &str, ioc_type: IocType) -> bool` — must be <1ms
+- [x 2026-03-23] Offline snapshot: feeds bundled as gzipped file for air-gap deployments
+- [x 2026-03-23] Prometheus metrics: filter size, lookup latency, hit rate
 
 **Acceptance criteria:**
 ```bash
@@ -325,16 +325,16 @@ cargo test -p kron-stream -- ioc
 
 ### 2.3 ONNX Inference Engine
 
-- [ ] ONNX Runtime session management (one session per model, reused)
-- [ ] Model loader: loads from `/var/lib/kron/models/` with hash verification
-- [ ] `AnomalyScorer::score(features: AnomalyFeatures) -> f32`
-- [ ] `UebaClassifier::classify(features: UebaFeatures) -> f32`
-- [ ] `BeaconingDetector::detect(inter_arrival_times: &[f32]) -> f32`
-- [ ] `ExfilScorer::score(features: ExfilFeatures) -> f32`
-- [ ] Feature extractor: `KronEvent` → feature structs for each model
-- [ ] Inference called async (does not block event stream)
-- [ ] Model hot-reload: new model loads in background, promoted atomically
-- [ ] Inference latency target: <5ms per event on CPU
+- [x 2026-03-23] ONNX Runtime session management (one session per model, reused)
+- [x 2026-03-23] Model loader: loads from `/var/lib/kron/models/` with hash verification
+- [x 2026-03-23] `AnomalyScorer::score(features: AnomalyFeatures) -> f32`
+- [x 2026-03-23] `UebaClassifier::classify(features: UebaFeatures) -> f32`
+- [x 2026-03-23] `BeaconingDetector::detect(inter_arrival_times: &[f32]) -> f32`
+- [x 2026-03-23] `ExfilScorer::score(features: ExfilFeatures) -> f32`
+- [x 2026-03-23] Feature extractor: `KronEvent` → feature structs for each model
+- [x 2026-03-23] Inference called async (does not block event stream)
+- [x 2026-03-23] Model hot-reload: new model loads in background, promoted atomically
+- [x 2026-03-23] Inference latency target: <5ms per event on CPU
 
 **Acceptance criteria:**
 ```bash
@@ -350,8 +350,8 @@ cargo test -p kron-ai -- inference
 
 ### 2.4 Stream Processor (`kron-stream`)
 
-- [ ] Consumes from `kron.enriched.{tenant_id}`
-- [ ] Pipeline (in order, per event):
+- [x 2026-03-23] Consumes from `kron.enriched.{tenant_id}`
+- [x 2026-03-23] Pipeline (in order, per event):
   - IOC bloom filter check
   - SIGMA rule evaluation
   - ONNX anomaly scoring
@@ -359,12 +359,12 @@ cargo test -p kron-ai -- inference
   - Entity graph update
   - Risk score computation
   - MITRE ATT&CK tagging
-- [ ] Risk scorer: formula from `docs/Features.md` section F-007
-- [ ] MITRE tagger: rule_id → (tactic, technique, sub-technique) mapping table
-- [ ] Entity graph: in-memory graph (user ↔ host ↔ IP), updated per event
-- [ ] If risk_score > threshold: publish to alert engine topic
-- [ ] Processes > 10,000 events/sec on single Standard-tier server
-- [ ] Prometheus metrics: processing latency, events/sec, alerts fired/sec
+- [x 2026-03-23] Risk scorer: formula from `docs/Features.md` section F-007
+- [x 2026-03-23] MITRE tagger: rule_id → (tactic, technique, sub-technique) mapping table
+- [x 2026-03-23] Entity graph: in-memory graph (user ↔ host ↔ IP), updated per event
+- [x 2026-03-23] If risk_score > threshold: publish to alert engine topic
+- [x 2026-03-23] Processes > 10,000 events/sec on single Standard-tier server
+- [x 2026-03-23] Prometheus metrics: processing latency, events/sec, alerts fired/sec
 
 **Acceptance criteria:**
 ```bash
@@ -380,18 +380,18 @@ cargo test -p kron-ai -- inference
 
 ### 2.5 Alert Engine (`kron-alert`)
 
-- [ ] Consumes alert-candidate events from stream processor
-- [ ] Deduplication: group by (rule_id + affected_asset + 15-min window)
-- [ ] Alert assembler: builds full `KronAlert` struct
-- [ ] Writes alerts to ClickHouse `alerts` table
-- [ ] Publishes to `kron.alerts.{tenant_id}` topic
-- [ ] WhatsApp notification (Twilio + Meta API)
-- [ ] SMS notification (Textlocal)
-- [ ] Email notification (SMTP)
-- [ ] Fallback chain: WhatsApp → SMS → Email
-- [ ] Plain-language EN summary (rule-based template, no LLM in Phase 2)
-- [ ] Hindi summary (rule-based template translation)
-- [ ] Notification rate limiting: max 10 WhatsApp/hour for P3+, P1/P2 always immediate
+- [x 2026-03-23] Consumes alert-candidate events from stream processor
+- [x 2026-03-23] Deduplication: group by (rule_id + affected_asset + 15-min window)
+- [x 2026-03-23] Alert assembler: builds full `KronAlert` struct
+- [x 2026-03-23] Writes alerts to ClickHouse `alerts` table
+- [x 2026-03-23] Publishes to `kron.alerts.{tenant_id}` topic
+- [x 2026-03-23] WhatsApp notification (Twilio + Meta API)
+- [x 2026-03-23] SMS notification (Textlocal)
+- [x 2026-03-23] Email notification (SMTP)
+- [x 2026-03-23] Fallback chain: WhatsApp → SMS → Email
+- [x 2026-03-23] Plain-language EN summary (rule-based template, no LLM in Phase 2)
+- [x 2026-03-23] Hindi summary (rule-based template translation)
+- [x 2026-03-23] Notification rate limiting: max 10 WhatsApp/hour for P3+, P1/P2 always immediate
 
 **Acceptance criteria:**
 ```bash

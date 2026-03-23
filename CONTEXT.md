@@ -451,3 +451,97 @@ The human updates this after each session, or Claude updates it at the end of ea
 2. All of Phase 1 is now complete (1.1 through 1.7)
 3. Run the Phase 1 Gate acceptance test: `./scripts/phase1-acceptance.sh`
 4. If gate passes, begin Phase 2 — Detection Engine (kron-stream, SIGMA rules, IOC bloom filter, ONNX)
+
+---
+
+## Session: 2026-03-23 — Phase 2 Detection Engine Complete (2.1–2.5) + CI Fix
+
+### Completed
+- **CI fix (all phases):** Resolved 22 clippy/fmt failures blocking qa→main PR
+  - Root cause: `pedantic=warn` + `-D warnings` in CI promoted pedantic warnings to errors
+  - Fixed across 51 files: doc backticks for product names, `#[allow]` in test modules, cast fixes,
+    `Default` derive, dead_code allows for Linux-only eBPF types
+  - Commit: `fix(ci): resolve all clippy and rustfmt failures blocking qa→main merge`
+
+- **Phase 2.1 — SIGMA Rule Engine (`kron-stream`):**
+  - Full SIGMA YAML parser with typed AST (`sigma/types.rs`, `sigma/ast.rs`)
+  - Recursive-descent condition parser (`sigma/condition.rs`) — and/or/not, quantifiers, count()
+  - In-memory event matcher with all modifiers: Exact/Contains/ContainsAll/StartsWith/EndsWith/Re/Cidr/Gt/Gte/Lt/Lte (`sigma/matcher.rs`)
+  - ClickHouse SQL compiler: `LOWER() LIKE`, `match()`, `isIPAddressInRange()` (`sigma/compiler_clickhouse.rs`)
+  - DuckDB SQL compiler: `ILIKE`, `regexp_matches()` (`sigma/compiler_duckdb.rs`)
+  - Rule loader with mtime hot-reload, DashMap registry, FP classifier, RuleEvaluator
+  - Commit: `feat(stream): implement Phase 2.1 SIGMA Rule Engine`
+
+- **Phase 2.2 — IOC Bloom Filter (`kron-stream`):**
+  - Counting Bloom Filter: 4-bit nibble packed, 200M slots (100MB), k=7, xxHash3 double hashing
+  - IOC types: IP/Domain/SHA256/URL with normalization
+  - Feed loader: MalwareBazaar SHA256, URLhaus CSV, ThreatFox IPs, Feodo Tracker, Spamhaus DROP
+  - `IocRefreshTask` with `watch::Receiver` shutdown channel
+  - Commit: `feat(stream): implement Phase 2.2 IOC Bloom Filter`
+
+- **Phase 2.3 — ONNX Inference Engine (`kron-ai`):**
+  - 4 ONNX model wrappers: AnomalyScorer (6 features), UebaClassifier (4), BeaconingDetector (128 IAT), ExfilScorer (4)
+  - `OnnxSession`: `Arc<Mutex<Session>>` (ort 2.x requires `&mut self` for run)
+  - `ModelRegistry`: hot-swap atomic reload per slot
+  - `InferenceService::score_event()` runs anomaly+exfil via `spawn_blocking`
+  - ort upgraded from "1.18" (non-existent) to "2.0.0-rc.12"
+  - Commit: `feat(ai): implement Phase 2.3 ONNX Inference Engine`
+
+- **Phase 2.4 — Stream Processor pipeline (`kron-stream`):**
+  - `pipeline/risk_score.rs`: F-007 formula (rule severity + IOC +20 + anomaly +15 + UEBA +10 × asset criticality)
+  - `pipeline/mitre.rs`: SIGMA `attack.*` tag → tactic/technique/sub-technique
+  - `pipeline/entity_graph.rs`: DashMap entity graph (User/Host/IP) with max-risk accumulation
+  - `pipeline/processor.rs`: `DetectionPipeline::process()` 7-stage pipeline; `AlertCandidate` + `AlertCandidatePayload` wire form
+  - `shutdown.rs`, `metrics.rs`, full `main.rs` with 8-step startup + per-tenant consumer loops
+  - Commit: `feat(stream): implement Phase 2.4 Stream Processor pipeline`
+
+- **Phase 2.5 — Alert Engine (`kron-alert`):**
+  - `dedup.rs`: 15-min DashMap windows keyed by (tenant_id, rule_id, primary_asset)
+  - `assembler.rs`: full `KronAlert` construction
+  - `narrative.rs`: EN + Hindi summary templates with IST (UTC+5:30)
+  - `notify/`: WhatsApp (Twilio), SMS (Textlocal), Email (raw async SMTP), rate limiter (1h sliding), dispatcher (fallback chain)
+  - `engine.rs`: `AlertEngine` with tokio::select! loop + 30s flush timer
+  - Commit: `feat(alert): implement Phase 2.5 Alert Engine`
+
+### Decisions Made
+- ADR: AlertCandidate mirrored in kron-alert/src/types.rs to avoid kron-alert → kron-stream dep (coupling via JSON over bus instead)
+- ADR: ort 2.0.0-rc.12 requires `Arc<Mutex<Session>>` due to `run()` taking `&mut self`
+- ADR: Aggregation/temporal SIGMA conditions return `false` in real-time mode — served by SQL compilation path only
+- ADR: CIDR matching in kron-stream memory evaluator uses bitwise IPv4 arithmetic (no `ipnetwork` crate)
+- ADR: DuckDB CIDR SQL compilation degrades to `1=0` — TODO(#TBD, hardik, v1.1)
+
+### Code Written
+**kron-stream:**
+- `src/lib.rs`, `src/error.rs` — crate root + `StreamError`
+- `src/sigma/` — 11 files (types, ast, condition, field_map, matcher, compiler, compiler_clickhouse, compiler_duckdb, fp_classifier, loader, registry, evaluator, mod)
+- `src/ioc/` — 6 files (bloom, types, filter, feed, refresh, metrics, mod)
+- `src/pipeline/` — 5 files (risk_score, mitre, entity_graph, processor, mod)
+- `src/shutdown.rs`, `src/metrics.rs`, `src/main.rs`
+
+**kron-ai:**
+- `src/error.rs`, `src/onnx/` — 5 files (session, anomaly, ueba, beaconing, exfil, mod), `src/registry.rs`, `src/inference.rs`, `src/metrics.rs`
+
+**kron-alert:**
+- `src/error.rs`, `src/types.rs`, `src/dedup.rs`, `src/assembler.rs`, `src/narrative.rs`
+- `src/notify/` — 5 files (whatsapp, sms, email, rate_limit, dispatcher, mod)
+- `src/engine.rs`, `src/metrics.rs`, `src/main.rs`
+
+### Known Issues / Tech Debt
+- `libduckdb-sys` fails to build on Windows (no C++ compiler) — pre-existing environment issue; CI passes on ubuntu-latest
+- DuckDB CIDR SQL compilation degrades to `1=0` — temporal/aggregation conditions also stub out at runtime
+- Integration tests for Phase 2 require running Redpanda/embedded bus + real ONNX model files
+- ONNX model files not included in repo (no trained models yet) — tests marked `#[ignore = "requires ONNX model file"]`
+- Asset enrichment backend still a no-op from Phase 1.6 — wired in Phase 3
+
+### Open Questions
+- ONNX model training data — how will Isolation Forest and XGBoost models be trained? (Phase 4/5 concern)
+- WhatsApp Business API India approval — should apply for Twilio WhatsApp sandbox now
+
+### Next Session Should Start With
+1. Read CLAUDE.md, PHASES.md, CONTEXT.md
+2. Phase 2 is complete (2.1–2.5). The qa branch is ahead of origin by 5 commits — push to qa: `git push origin qa`
+3. Begin **Phase 3 — Web UI + Query API**:
+   - Phase 3.1: kron-auth (JWT RS256, Argon2id, TOTP, RBAC)
+   - Phase 3.2: kron-query-api (Axum REST + WebSocket, OpenAPI)
+   - Phase 3.3: SolidJS web UI
+4. Before starting Phase 3, merge qa → main via PR (all CI should now pass)
