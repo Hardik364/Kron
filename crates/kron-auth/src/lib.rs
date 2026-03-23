@@ -12,9 +12,27 @@
 //!
 //! # Module structure
 //!
-//! - [`jwt`] — JWT issuance, validation, and Axum middleware
+//! - [`jwt`] — JWT issuance, validation, and Axum extractor
 //! - [`rbac`] — `can(role, action, resource)` function
 //! - [`mfa`] — TOTP validation (totp-rs)
 //! - [`password`] — Argon2id hashing and verification
 //! - [`session`] — token blocklist (logout invalidation)
 //! - [`brute_force`] — rate limiting on auth endpoints
+//! - [`metrics`] — Prometheus counters for auth events
+
+pub mod brute_force;
+pub mod error;
+pub mod jwt;
+pub mod metrics;
+pub mod mfa;
+pub mod password;
+pub mod rbac;
+pub mod session;
+
+pub use brute_force::BruteForceGuard;
+pub use error::AuthError;
+pub use jwt::{JwtClaims, JwtService};
+pub use mfa::TotpService;
+pub use password::PasswordService;
+pub use rbac::{can, Action, Resource, Role};
+pub use session::SessionBlocklist;
