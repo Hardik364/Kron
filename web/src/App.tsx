@@ -16,6 +16,7 @@ const AlertsPage = lazy(() => import('./pages/Alerts'));
 const EventsPage = lazy(() => import('./pages/Events'));
 const MitrePage = lazy(() => import('./pages/Mitre'));
 const SettingsPage = lazy(() => import('./pages/Settings'));
+const RuleBuilderPage = lazy(() => import('./pages/RuleBuilder'));
 
 /** Full-screen skeleton shown while lazy page chunks are loading. */
 function PageLoader() {
@@ -47,6 +48,7 @@ export default function App() {
         <Route path="/alerts" component={AlertsPage} />
         <Route path="/events" component={EventsPage} />
         <Route path="/mitre" component={MitrePage} />
+        <Route path="/rules/new" component={RuleBuilderPage} />
         <Route path="/settings" component={SettingsPage} />
       </Suspense>
     </Router>

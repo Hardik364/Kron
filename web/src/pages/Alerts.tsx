@@ -128,6 +128,63 @@ export default function AlertsPage(): JSX.Element {
     onCleanup(() => ws.close());
   });
 
+  // ── Keyboard shortcuts ────────────────────────────────────────────────────
+  // J — next alert    K — previous alert
+  // A — acknowledge   F — false positive   Space — select first if none
+  createEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // Don't intercept when focus is inside an input/textarea/select
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+      const alerts = state.alerts;
+      const currentIdx = alerts.findIndex((a) => a.alert_id === state.selectedId);
+
+      switch (e.key) {
+        case 'j':
+        case 'J': {
+          e.preventDefault();
+          const nextIdx = currentIdx < alerts.length - 1 ? currentIdx + 1 : 0;
+          if (alerts[nextIdx]) {
+            selectAlert(alerts[nextIdx].alert_id);
+            setActionError(null);
+            setResolutionNotes('');
+          }
+          break;
+        }
+        case 'k':
+        case 'K': {
+          e.preventDefault();
+          const prevIdx = currentIdx > 0 ? currentIdx - 1 : alerts.length - 1;
+          if (alerts[prevIdx]) {
+            selectAlert(alerts[prevIdx].alert_id);
+            setActionError(null);
+            setResolutionNotes('');
+          }
+          break;
+        }
+        case 'a':
+        case 'A': {
+          if (state.selectedId) { e.preventDefault(); void handleAcknowledge(); }
+          break;
+        }
+        case 'f':
+        case 'F': {
+          if (state.selectedId) { e.preventDefault(); void handleFalsePositive(); }
+          break;
+        }
+        case ' ': {
+          e.preventDefault();
+          if (!state.selectedId && alerts[0]) selectAlert(alerts[0].alert_id);
+          break;
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handler);
+    onCleanup(() => document.removeEventListener('keydown', handler));
+  });
+
   const selectedAlert = (): KronAlert | undefined =>
     state.alerts.find((a) => a.alert_id === state.selectedId);
 
@@ -355,6 +412,9 @@ export default function AlertsPage(): JSX.Element {
                 <p style={{ 'font-size': '15px' }}>Select an alert to view details</p>
                 <p style={{ 'font-size': '12px', color: 'var(--text-dim)' }}>
                   Click any row on the left panel
+                </p>
+                <p style={{ 'font-size': '11px', color: 'var(--text-dim)', 'margin-top': '8px', 'font-family': 'var(--font-mono)' }}>
+                  J/K navigate · A acknowledge · F false positive · Space select
                 </p>
               </div>
             }

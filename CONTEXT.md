@@ -619,3 +619,32 @@ The human updates this after each session, or Claude updates it at the end of ea
    - Phase 4.2: Compliance engine (CERT-In, DPDP, RBI, SEBI)
    - Phase 4.3: Flutter mobile app (iOS + Android, Riverpod)
 5. Before Phase 4, install Node.js and run `npm install` in `web/` to verify UI builds
+
+---
+
+## Session: 2026-03-24 — Phase 3 Remaining Items (continued)
+
+### Completed
+- Login anomaly detection: `publish_auth_event` helper in `kron-query-api/src/handlers/auth.rs`
+  publishes `KronEvent` (EventSource::HttpIntake) to `kron.raw.{tenant_id}` on every login
+  attempt; success published inline, failure published via `tokio::spawn` (best-effort)
+- No-code rule builder: `web/src/pages/RuleBuilder.tsx` — full SolidJS form with
+  filter/threshold modes, SIGMA YAML live preview, submits to `POST /api/v1/rules`;
+  wired into App.tsx routes + Sidebar.tsx nav
+- Keyboard shortcuts for alert queue: `createEffect`/`onCleanup` keydown handler in
+  `Alerts.tsx` covers J/K (navigate), A (acknowledge), F (false positive), Space (select first);
+  keyboard hint bar added to empty-state panel: "J/K navigate · A acknowledge · F false positive · Space select"
+- All Phase 3 tasks now marked `[x 2026-03-24]` in PHASES.md
+
+### Decisions Made
+- Login anomaly events are best-effort (fire-and-forget); bus failure logged but not propagated
+
+### Next Session Should Start With
+1. Read CLAUDE.md, PHASES.md, CONTEXT.md
+2. Phase 3 is **fully complete**. Push `qa` to origin if not already done.
+3. Create PR: qa → main on GitHub.
+4. Begin **Phase 4 — MSSP + Compliance + Mobile**:
+   - Phase 4.1: Multi-tenancy hardening
+   - Phase 4.2: Compliance engine (CERT-In, DPDP, RBI, SEBI)
+   - Phase 4.3: Flutter mobile app
+5. Run `npm install` in `web/` to verify UI builds before Phase 4

@@ -433,7 +433,7 @@ Goal: Analyst can log in, see alerts, search events, query in plain English.
 - [x 2026-03-24] Logout endpoint (token invalidation via blocklist in Redis/memory)
 - [x 2026-03-24] Brute-force protection: 5 failures → 15-min lockout
 - [x 2026-03-24] RBAC: `can(role, action, resource)` function used in all handlers
-- [ ] Login anomaly detection: KRON fires on its own login events
+- [x 2026-03-24] Login anomaly detection: KRON fires on its own login events
 
 **Acceptance criteria:**
 ```bash
@@ -481,12 +481,12 @@ cargo test -p kron-query-api -- --include-ignored integration
 - [x 2026-03-24] Alert detail panel: narrative, evidence table, MITRE info, action buttons
 - [x 2026-03-24] Event search: NL query bar, filter sidebar, results table
 - [x 2026-03-24] MITRE ATT&CK heatmap: full matrix, colour by hit count
-- [ ] No-code rule builder: Phase 3 basic version (filter + threshold only)
+- [x 2026-03-24] No-code rule builder: Phase 3 basic version (filter + threshold only)
 - [x 2026-03-24] Settings: org name, WhatsApp number, notifications
 - [x 2026-03-24] Error states: network error, query timeout, empty results
 - [x 2026-03-24] Loading states: skeleton screens (not spinners)
 - [x 2026-03-24] Dark mode
-- [ ] Keyboard shortcuts for alert queue (J/K/A/F/Space)
+- [x 2026-03-24] Keyboard shortcuts for alert queue (J/K/A/F/Space)
 
 **Acceptance criteria:**
 ```

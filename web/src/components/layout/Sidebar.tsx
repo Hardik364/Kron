@@ -77,6 +77,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/alerts', label: 'Alerts', shortcut: 'G A', icon: <IconAlerts /> },
   { href: '/events', label: 'Events', shortcut: 'G E', icon: <IconEvents /> },
   { href: '/mitre', label: 'MITRE', shortcut: 'G M', icon: <IconMitre /> },
+  { href: '/rules/new', label: 'Rule Builder', shortcut: 'G R', icon: <IconSettings /> },
   { href: '/settings', label: 'Settings', shortcut: 'G S', icon: <IconSettings /> },
 ];
 

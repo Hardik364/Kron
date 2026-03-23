@@ -15,7 +15,9 @@
 //! On logout, the `jti` is added to the [`SessionBlocklist`].
 
 use axum::{extract::State, http::StatusCode, Json};
+use bytes::Bytes;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 use crate::{error::ApiError, middleware::AuthUser, state::AppState};
 
@@ -87,7 +89,25 @@ pub async fn login(
 
     // Gate 2: credential validation.
     // TODO(#9, hardik, v1.1): Replace with real user DB lookup when user management is implemented
-    let (user_id, tenant_id, role) = validate_credentials_stub(&state, &req.email, &req.password)?;
+    let (user_id, tenant_id, role) = validate_credentials_stub(&state, &req.email, &req.password)
+        .map_err(|e| {
+        state.brute_force.record_failure(&req.email);
+        // Publish login-failure event to the detection pipeline so SIGMA
+        // brute-force rules can fire on KRON's own auth stream.
+        let state_clone = state.clone();
+        let email_clone = req.email.clone();
+        tokio::spawn(async move {
+            publish_auth_event(
+                &state_clone,
+                "unknown",
+                &email_clone,
+                "auth_login_failure",
+                kron_types::Severity::Medium,
+            )
+            .await;
+        });
+        e
+    })?;
 
     // Gate 3: TOTP (skipped if account has no MFA secret; Phase 3 adds per-user MFA).
     // TOTP field is parsed but MFA enforcement is deferred until user DB exists.
@@ -96,11 +116,21 @@ pub async fn login(
     // Issue JWT.
     let (token, _jti) = state.jwt.issue(&user_id, &tenant_id, &role).map_err(|e| {
         tracing::error!(user_id = %user_id, error = %e, "JWT issuance failed");
-        state.brute_force.record_failure(&req.email);
         ApiError::Internal("token issuance failed".to_owned())
     })?;
 
     state.brute_force.record_success(&req.email);
+
+    // Publish login-success event so the detection pipeline can fire SIGMA rules
+    // against KRON's own authentication stream (login anomaly detection).
+    publish_auth_event(
+        &state,
+        &tenant_id,
+        &req.email,
+        "auth_login_success",
+        kron_types::Severity::Low,
+    )
+    .await;
 
     // Parse expiry for the response body.
     let claims = state.jwt.validate(&token).map_err(|e| {
@@ -269,6 +299,71 @@ pub async fn logout(State(state): State<AppState>, user: AuthUser) -> Result<Sta
     state.blocklist.revoke(&user.jti, user.exp);
     tracing::info!(user_id = %user.user_id, jti = %user.jti, "user logged out");
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Publishes a KRON-internal auth event to `kron.raw.{tenant_id}` so that
+/// the detection pipeline (SIGMA rules, ONNX, risk scorer) can monitor the
+/// platform's own authentication stream.
+///
+/// Failures are logged and silently dropped — auth events are best-effort;
+/// they must never block or fail the login response itself.
+async fn publish_auth_event(
+    state: &AppState,
+    tenant_id: &str,
+    email: &str,
+    event_type: &str,
+    severity: kron_types::Severity,
+) {
+    use kron_types::{EventId, EventSource, KronEvent, TenantId};
+
+    let tid = match tenant_id.parse::<uuid::Uuid>() {
+        Ok(u) => TenantId::from(u),
+        Err(_) => TenantId::new(),
+    };
+
+    let event = KronEvent {
+        event_id: EventId::new(),
+        tenant_id: tid,
+        ts: chrono::Utc::now(),
+        source_type: EventSource::HttpIntake,
+        event_type: event_type.to_owned(),
+        user_name: Some(email.to_owned()),
+        severity,
+        severity_score: match severity {
+            kron_types::Severity::Medium => 50,
+            kron_types::Severity::Low => 25,
+            _ => 75,
+        },
+        hostname: Some("kron-api".to_owned()),
+        ..Default::default()
+    };
+
+    let topic = format!("kron.raw.{tenant_id}");
+    let payload = match serde_json::to_vec(&event) {
+        Ok(b) => Bytes::from(b),
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to serialise auth event for bus publish");
+            return;
+        }
+    };
+
+    if let Err(e) = state
+        .bus
+        .send(
+            &topic,
+            Some(Bytes::from(email.to_owned())),
+            payload,
+            HashMap::new(),
+        )
+        .await
+    {
+        tracing::warn!(
+            event_type = event_type,
+            tenant_id = tenant_id,
+            error = %e,
+            "failed to publish auth event to bus (best-effort, continuing)"
+        );
+    }
 }
 
 #[cfg(test)]

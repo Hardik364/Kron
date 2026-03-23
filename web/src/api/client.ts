@@ -222,6 +222,18 @@ class ApiClient {
     });
   }
 
+  // ─── Rules ────────────────────────────────────────────────────────────────
+
+  /**
+   * Create a new detection rule (no-code builder output).
+   */
+  async createRule(body: Record<string, unknown>): Promise<{ rule_id: string }> {
+    return this.request<{ rule_id: string }>('/rules', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
   // ─── Health ───────────────────────────────────────────────────────────────
 
   /**
