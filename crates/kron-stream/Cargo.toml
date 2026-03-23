@@ -37,6 +37,7 @@ metrics-exporter-prometheus = { workspace = true }
 chrono = { workspace = true }
 xxhash-rust = { workspace = true }
 reqwest = { workspace = true }
+bytes = { workspace = true }
 
 [lints]
 workspace = true
