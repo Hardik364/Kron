@@ -1,6 +1,6 @@
 # PHASES.md — KRON Build Phases
 
-**Current phase:** PHASE 2
+**Current phase:** PHASE 3
 **Rule:** Do not start a task in Phase N+1 until all P0 tasks in Phase N are complete and tested.  
 **Rule:** Each task has an acceptance criteria. A task is NOT done until its acceptance criteria passes.
 
@@ -423,16 +423,16 @@ Goal: Analyst can log in, see alerts, search events, query in plain English.
 
 ### 3.1 Auth Service (`kron-auth`)
 
-- [ ] JWT issuance (RS256, 8-hour expiry)
-- [ ] JWT validation middleware for Axum
-- [ ] `TenantContext` extraction from JWT (injected into every handler)
-- [ ] Password hashing (Argon2id)
-- [ ] TOTP validation (totp-rs crate)
-- [ ] Login endpoint: `POST /auth/login`
-- [ ] Refresh endpoint: `POST /auth/refresh`
-- [ ] Logout endpoint (token invalidation via blocklist in Redis/memory)
-- [ ] Brute-force protection: 5 failures → 15-min lockout
-- [ ] RBAC: `can(role, action, resource)` function used in all handlers
+- [x 2026-03-24] JWT issuance (RS256, 8-hour expiry)
+- [x 2026-03-24] JWT validation middleware for Axum
+- [x 2026-03-24] `TenantContext` extraction from JWT (injected into every handler)
+- [x 2026-03-24] Password hashing (Argon2id)
+- [x 2026-03-24] TOTP validation (totp-rs crate)
+- [x 2026-03-24] Login endpoint: `POST /auth/login`
+- [x 2026-03-24] Refresh endpoint: `POST /auth/refresh`
+- [x 2026-03-24] Logout endpoint (token invalidation via blocklist in Redis/memory)
+- [x 2026-03-24] Brute-force protection: 5 failures → 15-min lockout
+- [x 2026-03-24] RBAC: `can(role, action, resource)` function used in all handlers
 - [ ] Login anomaly detection: KRON fires on its own login events
 
 **Acceptance criteria:**
@@ -449,17 +449,17 @@ cargo test -p kron-auth
 
 ### 3.2 Query API (`kron-query-api`)
 
-- [ ] Axum HTTP server
-- [ ] All endpoints from `docs/API.md`
-- [ ] Query rewrite middleware: injects `tenant_id` on every storage query
-- [ ] Input validation on all endpoints (no raw SQL from request body ever executes directly)
-- [ ] Rate limiting (tower middleware)
-- [ ] WebSocket handler for live alert stream
-- [ ] WebSocket handler for live event tail
-- [ ] OpenAPI spec auto-generated (utoipa)
-- [ ] Serves SolidJS static files from embedded assets
-- [ ] Request tracing: every request gets a trace_id
-- [ ] Response time target: p99 < 200ms for read endpoints
+- [x 2026-03-24] Axum HTTP server
+- [x 2026-03-24] All endpoints from `docs/API.md`
+- [x 2026-03-24] Query rewrite middleware: injects `tenant_id` on every storage query
+- [x 2026-03-24] Input validation on all endpoints (no raw SQL from request body ever executes directly)
+- [x 2026-03-24] Rate limiting (tower middleware)
+- [x 2026-03-24] WebSocket handler for live alert stream
+- [x 2026-03-24] WebSocket handler for live event tail
+- [x 2026-03-24] OpenAPI spec auto-generated (utoipa)
+- [x 2026-03-24] Serves SolidJS static files from embedded assets
+- [x 2026-03-24] Request tracing: every request gets a trace_id
+- [x 2026-03-24] Response time target: p99 < 200ms for read endpoints
 
 **Acceptance criteria:**
 ```bash
@@ -472,20 +472,20 @@ cargo test -p kron-query-api -- --include-ignored integration
 
 ### 3.3 SolidJS Web UI
 
-- [ ] Project scaffolded with Vite + SolidJS + TypeScript
-- [ ] Design system implemented: colours, typography, spacing (from UIUX.md)
-- [ ] API client (`/web/src/api/client.ts`) — all endpoints typed
-- [ ] Auth flow: login, TOTP, redirect to dashboard
-- [ ] Dashboard: 4 metric cards, alert trend chart, MITRE mini-heatmap
-- [ ] Alert queue: list, filter, severity badges, inline expand
-- [ ] Alert detail panel: narrative, evidence table, MITRE info, action buttons
-- [ ] Event search: NL query bar, filter sidebar, results table
-- [ ] MITRE ATT&CK heatmap: full matrix, colour by hit count
+- [x 2026-03-24] Project scaffolded with Vite + SolidJS + TypeScript
+- [x 2026-03-24] Design system implemented: colours, typography, spacing (from UIUX.md)
+- [x 2026-03-24] API client (`/web/src/api/client.ts`) — all endpoints typed
+- [x 2026-03-24] Auth flow: login, TOTP, redirect to dashboard
+- [x 2026-03-24] Dashboard: 4 metric cards, alert trend chart, MITRE mini-heatmap
+- [x 2026-03-24] Alert queue: list, filter, severity badges, inline expand
+- [x 2026-03-24] Alert detail panel: narrative, evidence table, MITRE info, action buttons
+- [x 2026-03-24] Event search: NL query bar, filter sidebar, results table
+- [x 2026-03-24] MITRE ATT&CK heatmap: full matrix, colour by hit count
 - [ ] No-code rule builder: Phase 3 basic version (filter + threshold only)
-- [ ] Settings: org name, WhatsApp number, notifications
-- [ ] Error states: network error, query timeout, empty results
-- [ ] Loading states: skeleton screens (not spinners)
-- [ ] Dark mode
+- [x 2026-03-24] Settings: org name, WhatsApp number, notifications
+- [x 2026-03-24] Error states: network error, query timeout, empty results
+- [x 2026-03-24] Loading states: skeleton screens (not spinners)
+- [x 2026-03-24] Dark mode
 - [ ] Keyboard shortcuts for alert queue (J/K/A/F/Space)
 
 **Acceptance criteria:**

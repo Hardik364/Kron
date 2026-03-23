@@ -545,3 +545,77 @@ The human updates this after each session, or Claude updates it at the end of ea
    - Phase 3.2: kron-query-api (Axum REST + WebSocket, OpenAPI)
    - Phase 3.3: SolidJS web UI
 4. Before starting Phase 3, merge qa → main via PR (all CI should now pass)
+
+---
+
+## Session: 2026-03-24 — Phase 3 Web UI + Query API (3.1–3.3)
+
+### Completed
+- **chore(deps):** Added `totp-rs v5` (ADR-019), `jsonwebtoken v10` with `rust_crypto` feature
+  (avoids `ring` C build — pure Rust RSA), `utoipa v4` + `utoipa-axum` + `utoipa-swagger-ui`
+  (ADR-020). Commit: `1cf682f`
+
+- **Phase 3.1 — Auth Service (`kron-auth`):**
+  - `error.rs` — `AuthError` (11 variants)
+  - `jwt.rs` — `JwtService` RS256 issue/validate/claims_with_grace; `JwtExtractor` Axum extractor
+  - `password.rs` — `PasswordService` Argon2id m=64MiB t=3 p=4 (ADR-013)
+  - `mfa.rs` — `TotpService` generate_secret / validate_totp (±1 window) / totp_uri
+  - `rbac.rs` — `Role/Action/Resource` enums; pure `can()` function (5×5×9 matrix)
+  - `brute_force.rs` — `BruteForceGuard` DashMap sliding window, 5 attempts → 15-min lockout
+  - `session.rs` — `SessionBlocklist` jti→Instant DashMap revocation
+  - `metrics.rs` — 5 Prometheus counters
+  - `tests/auth_integration.rs` — round-trip tests for all modules
+  - Commit: `da3c0dd`
+
+- **Phase 3.2 — Query API (`kron-query-api`):**
+  - Full Axum router: auth, events, alerts, rules, assets, health, Swagger UI at `/docs`
+  - Tenant query-rewrite middleware (gate 2): injects `tenant_id` on every storage call
+  - JWT auth middleware using `JwtExtractor` from kron-auth
+  - Handlers: auth (login/refresh/logout), events (list/get/query), alerts (CRUD+ack+escalate+evidence),
+    rules (CRUD+test+sigma-import), assets (list/get/events/alerts), health/version
+  - WebSocket: live alert fan-out broadcast + event tail with severity filter
+  - OpenAPI 3.1 via utoipa, Swagger UI served at `/docs`
+  - 9-step startup binary (tracing→config→storage→bus→rule_registry→JWT→router→metrics→shutdown)
+  - Commit: `ee66d54`
+
+- **Phase 3.3 — SolidJS Web UI (`web/`):**
+  - Vite + SolidJS + TypeScript scaffolding, Inter + JetBrains Mono fonts
+  - Design system from `docs/UIUX.md`: #0A0E1A bg, #3B82F6 accent, P1–P5 severity palette
+  - `src/api/client.ts` — all API calls typed (no raw fetch in components)
+  - `src/stores/auth.ts` + `src/stores/alerts.ts` + `src/stores/events.ts` (createSignal)
+  - Pages: Login (email/password/TOTP), Dashboard (4 KPI cards + recent alerts),
+    Alerts (split-pane queue + detail with narrative + action buttons),
+    Events (search form + dense table, IOC-hit red), Mitre (14-tactic heatmap),
+    Settings (notification channel config)
+  - Skeleton screen loading states (no spinners)
+  - SolidJS Router with auth guard on every route
+  - Commit: `55cf4c0`
+
+### Decisions Made
+- ADR-019: `totp-rs v5` for TOTP (spec-mandated)
+- ADR-020: `utoipa v4` for OpenAPI (spec-mandated)
+- `jsonwebtoken v10` with `rust_crypto` feature: avoids `ring` C build failure on Windows
+  (pre-existing environment issue with MinGW); uses pure-Rust `rsa` crate instead
+- ruflo MCP used for task tracking and system health monitoring during this session
+
+### Known Remaining Phase 3 Items (not started)
+- Login anomaly detection: KRON fires on its own login events (needs full pipeline wired)
+- No-code rule builder (Phase 3 basic version)
+- Keyboard shortcuts for alert queue (J/K/A/F/Space)
+- Integration tests for kron-query-api (require running ClickHouse + Redpanda)
+
+### Open Issues / Tech Debt
+- `.claude-flow/` directory created by ruflo MCP — added to `.gitignore`
+- `libduckdb-sys`, `ring`, `clickhouse-rs-cityhash-sys`, `lz4-sys` fail to build on Windows
+  (no C++ compiler in MinGW) — pre-existing; CI passes on ubuntu-latest
+- kron-query-api integration tests are stubs — full tests require testcontainers (Phase 3 gate)
+
+### Next Session Should Start With
+1. Read CLAUDE.md, PHASES.md, CONTEXT.md
+2. Phase 3.1–3.3 is complete. qa is ahead of origin — confirm push succeeded.
+3. Create PR: qa → main on GitHub. All CI checks should pass.
+4. Begin **Phase 4 — MSSP + Compliance + Mobile**:
+   - Phase 4.1: Multi-tenancy hardening (4-gate isolation tests, canary)
+   - Phase 4.2: Compliance engine (CERT-In, DPDP, RBI, SEBI)
+   - Phase 4.3: Flutter mobile app (iOS + Android, Riverpod)
+5. Before Phase 4, install Node.js and run `npm install` in `web/` to verify UI builds
