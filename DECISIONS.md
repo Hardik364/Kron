@@ -191,6 +191,26 @@ If it's already here, follow it. If you want to change a decision, propose it to
 
 ---
 
+## ADR-019: totp-rs for TOTP / HOTP implementation
+
+**Date:** 2026-03-23
+**Status:** Final
+**Decision:** Use `totp-rs` (v0.5) for TOTP MFA in kron-auth.
+**Rationale:** Explicitly called out in the PHASES.md spec ("TOTP validation (totp-rs crate)"). Pure Rust, no C bindings, implements RFC 6238. Supports both TOTP and HOTP. `gen_secret` feature used to generate QR-enrollable secrets.
+**Consequences:** TOTP secrets stored per-user in the auth store (Phase 3). QR code displayed on first login for authenticator app enrolment.
+
+---
+
+## ADR-020: utoipa for OpenAPI spec generation
+
+**Date:** 2026-03-23
+**Status:** Final
+**Decision:** Use `utoipa` (v4) + `utoipa-axum` + `utoipa-swagger-ui` for auto-generated OpenAPI 3.1 spec in kron-query-api.
+**Rationale:** Explicitly called out in PHASES.md ("OpenAPI spec auto-generated (utoipa)"). Integrates natively with Axum 0.7 via the `utoipa-axum` macro layer. Zero runtime overhead — spec generation is compile-time. Swagger UI served at `/docs`.
+**Consequences:** Every handler must carry `#[utoipa::path]` annotations. Return types must implement `ToSchema`. Schema drift is impossible since types are shared.
+
+---
+
 ## Open Questions (not yet decided)
 
 | Question | Raised by | Date | Context |
