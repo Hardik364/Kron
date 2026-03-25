@@ -8,6 +8,7 @@
  * Uses the `.shimmer` keyframe defined in global.css.
  */
 
+import { For } from 'solid-js';
 import type { JSX } from 'solid-js';
 
 interface LoadingSkeletonProps {
@@ -62,12 +63,14 @@ export function SkeletonRows(props: SkeletonRowProps): JSX.Element {
 
   return (
     <div style={{ display: 'flex', 'flex-direction': 'column', gap: '8px' }}>
-      {Array.from({ length: count }, (_, i) => {
-        const h = heights[Math.min(i, heights.length - 1)] ?? 14;
-        // Make the last line shorter for a natural-looking paragraph skeleton.
-        const w = i === count - 1 ? '70%' : '100%';
-        return <LoadingSkeleton key={i} height={h} width={w} />;
-      })}
+      <For each={Array.from({ length: count }, (_, i) => i)}>
+        {(i) => {
+          const h = heights[Math.min(i, heights.length - 1)] ?? 14;
+          // Make the last line shorter for a natural-looking paragraph skeleton.
+          const w = i === count - 1 ? '70%' : '100%';
+          return <LoadingSkeleton height={h} width={w} />;
+        }}
+      </For>
     </div>
   );
 }

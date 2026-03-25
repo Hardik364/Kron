@@ -10,7 +10,8 @@
     "strictNullChecks": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "paths": { "@/*": ["./src/*"] }
+    "paths": { "@/*": ["./src/*"] },
+    "types": ["vite/client"]
   },
   "include": ["src"]
 }
