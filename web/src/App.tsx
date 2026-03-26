@@ -17,6 +17,8 @@ const EventsPage = lazy(() => import('./pages/Events'));
 const MitrePage = lazy(() => import('./pages/Mitre'));
 const SettingsPage = lazy(() => import('./pages/Settings'));
 const RuleBuilderPage = lazy(() => import('./pages/RuleBuilder'));
+const TenantsPage = lazy(() => import('./pages/Tenants'));
+const CompliancePage = lazy(() => import('./pages/Compliance'));
 
 /** Full-screen skeleton shown while lazy page chunks are loading. */
 function PageLoader() {
@@ -49,6 +51,8 @@ export default function App() {
         <Route path="/events" component={EventsPage} />
         <Route path="/mitre" component={MitrePage} />
         <Route path="/rules/new" component={RuleBuilderPage} />
+        <Route path="/tenants" component={TenantsPage} />
+        <Route path="/compliance" component={CompliancePage} />
         <Route path="/settings" component={SettingsPage} />
       </Suspense>
     </Router>

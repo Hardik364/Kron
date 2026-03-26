@@ -243,6 +243,44 @@ class ApiClient {
     return this.request<HealthResponse>('/health');
   }
 
+  // ─── Compliance ───────────────────────────────────────────────────────────
+
+  /**
+   * Lists all compliance reports for the authenticated tenant.
+   */
+  async getComplianceReports<T>(): Promise<T> {
+    return this.request<T>('/compliance/reports');
+  }
+
+  /**
+   * Triggers generation of a new compliance report.
+   */
+  async generateComplianceReport(body: Record<string, unknown>): Promise<void> {
+    await this.request<void>('/compliance/reports', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  // ─── Tenants (MSSP) ───────────────────────────────────────────────────────
+
+  /**
+   * Lists all tenants. Super-admin only.
+   */
+  async listTenants<T>(): Promise<T> {
+    return this.request<T>('/tenants');
+  }
+
+  /**
+   * Creates a new tenant. Super-admin only.
+   */
+  async createTenant(body: Record<string, unknown>): Promise<void> {
+    await this.request<void>('/tenants', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
   // ─── WebSocket streams ────────────────────────────────────────────────────
 
   /**

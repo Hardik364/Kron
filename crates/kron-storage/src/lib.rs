@@ -37,8 +37,10 @@ pub mod clickhouse;
 pub mod duckdb;
 pub mod migration;
 pub mod query;
+pub mod tenant;
 pub mod traits;
 
 // Re-export key types
 pub use adaptive::AdaptiveStorage;
+pub use tenant::{TenantRecord, TenantStore};
 pub use traits::{AuditLogEntry, LatencyStats, StorageEngine, StorageResult};

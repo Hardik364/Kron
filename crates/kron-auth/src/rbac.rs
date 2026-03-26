@@ -98,6 +98,8 @@ pub enum Resource {
     Compliance,
     /// Collection agents registered to the tenant.
     Agents,
+    /// Tenant records (MSSP portal — super_admin only for write).
+    Tenants,
 }
 
 impl fmt::Display for Resource {
@@ -112,6 +114,7 @@ impl fmt::Display for Resource {
             Self::Settings => write!(f, "settings"),
             Self::Compliance => write!(f, "compliance"),
             Self::Agents => write!(f, "agents"),
+            Self::Tenants => write!(f, "tenants"),
         }
     }
 }
@@ -138,9 +141,15 @@ pub fn can(role: Role, action: Action, resource: Resource) -> bool {
         // Admin can do everything EXCEPT:
         //   - Users.Delete  (cannot delete user accounts)
         //   - Settings.Manage (cannot change platform-level settings management)
+        //   - Tenants.Write/Delete/Manage (super_admin only for tenant lifecycle)
         Role::Admin => !matches!(
             (action, resource),
-            (Action::Delete, Resource::Users) | (Action::Manage, Resource::Settings)
+            (Action::Delete, Resource::Users)
+                | (Action::Manage, Resource::Settings)
+                | (
+                    Action::Write | Action::Delete | Action::Manage,
+                    Resource::Tenants
+                )
         ),
 
         // Analyst: Events(R), Alerts(R+W), Rules(R+W), Assets(R+W),
@@ -171,7 +180,6 @@ pub fn can(role: Role, action: Action, resource: Resource) -> bool {
                     | Resource::Agents,
             )
         ),
-
         // ApiKey: Events(R), Alerts(R) only.
         Role::ApiKey => matches!(
             (action, resource),

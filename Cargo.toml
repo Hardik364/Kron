@@ -97,6 +97,9 @@ utoipa = { version = "4", features = ["axum_extras", "uuid", "chrono"] }
 utoipa-axum = "0.1"
 utoipa-swagger-ui = { version = "7", features = ["axum"] }
 
+# Archive / reports
+zip = "0.6"
+
 # Testing
 testcontainers = "0.15"
 testcontainers-modules = { version = "0.3", features = ["postgres", "redis"] }

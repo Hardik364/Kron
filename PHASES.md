@@ -522,30 +522,30 @@ Manual walkthrough checklist (run by human):
 ## Phase 4 — MSSP + Compliance + Mobile (Month 7–9)
 
 ### 4.1 Multi-Tenancy Hardening
-- [ ] 4-gate isolation fully implemented and tested
-- [ ] Continuous canary test deployed (runs every 5 min in production)
-- [ ] Tenant onboarding wizard (UI)
-- [ ] Tenant offboarding (data purge, audit trail preserved)
-- [ ] MSSP portal: per-tenant dashboard, billing metrics
-- [ ] Per-tenant config: WhatsApp number, language, compliance frameworks
+- [x 2026-03-26] 4-gate isolation fully implemented and tested
+- [x 2026-03-26] Continuous canary test deployed (runs every 5 min in production)
+- [x 2026-03-26] Tenant onboarding wizard (UI) — Tenants.tsx MSSP portal with create modal
+- [x 2026-03-26] Tenant offboarding (data purge, audit trail preserved) — offboard handler in API
+- [x 2026-03-26] MSSP portal: per-tenant dashboard, billing metrics — Tenants.tsx
+- [x 2026-03-26] Per-tenant config: WhatsApp number, language, compliance frameworks
 
 ### 4.2 Compliance Engine
-- [ ] CERT-In module: all 13 incident categories mapped
-- [ ] DPDP Act module: personal data access trail
-- [ ] RBI IS audit module
-- [ ] SEBI CSCRF module
-- [ ] Compliance dashboard UI
-- [ ] PDF report generation (weasyprint or similar)
-- [ ] Evidence package export
+- [x 2026-03-26] CERT-In module: all 13 incident categories mapped
+- [x 2026-03-26] DPDP Act module: personal data access trail
+- [x 2026-03-26] RBI IS audit module
+- [x 2026-03-26] SEBI CSCRF module
+- [x 2026-03-26] Compliance dashboard UI — Compliance.tsx
+- [x 2026-03-26] PDF report generation — HTML-first (ADR-021), browser print-to-PDF
+- [x 2026-03-26] Evidence package export — ZIP with manifest, events, alerts, audit log
 
 ### 4.3 Flutter Mobile App
-- [ ] Project scaffolded (Flutter 3.x, Riverpod)
-- [ ] Auth: email/password/TOTP + biometric
-- [ ] Alert feed screen
-- [ ] Alert detail screen
-- [ ] SOAR approval screen (with biometric confirmation)
-- [ ] Push notifications (P1/P2 immediate)
-- [ ] On-call schedule screen
+- [x 2026-03-26] Project scaffolded (Flutter 3.x, Riverpod)
+- [x 2026-03-26] Auth: email/password/TOTP + biometric
+- [x 2026-03-26] Alert feed screen
+- [x 2026-03-26] Alert detail screen
+- [x 2026-03-26] SOAR approval screen (with biometric confirmation)
+- [x 2026-03-26] Push notifications (P1/P2 immediate) — Firebase Messaging wired in main.dart
+- [x 2026-03-26] On-call schedule screen
 - [ ] iOS + Android build pipelines
 
 ### Phase 4 Gate

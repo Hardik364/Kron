@@ -8,10 +8,12 @@
 
 use crate::clickhouse::ClickHouseEngine;
 use crate::duckdb::DuckDbEngine;
+use crate::tenant::TenantStore;
 use crate::traits::{AuditLogEntry, LatencyStats, StorageEngine, StorageResult};
 use async_trait::async_trait;
 use kron_types::KronError;
 use kron_types::{DeploymentMode, KronAlert, KronConfig, KronEvent, TenantContext};
+use std::sync::Arc;
 use tracing::info;
 
 /// Enum of supported storage backends.
@@ -23,6 +25,9 @@ enum BackendEnum {
 
 /// Adaptive storage engine that selects `DuckDB` or `ClickHouse` from config.
 ///
+/// Also holds the [`TenantStore`] for MSSP tenant lifecycle management.
+/// `tenants` is the only cross-tenant data store; all other fields are per-tenant.
+///
 /// # Usage
 /// ```ignore
 /// let config = KronConfig::from_file("config.toml")?;
@@ -30,9 +35,14 @@ enum BackendEnum {
 ///
 /// let ctx = TenantContext::new(tenant_id, user_id, "viewer");
 /// let events = storage.query_events(&ctx, None, 1000).await?;
+///
+/// // Tenant management (super_admin only, enforced at handler layer):
+/// storage.tenants.insert(record).await?;
 /// ```
 pub struct AdaptiveStorage {
     backend: BackendEnum,
+    /// Cross-tenant registry for MSSP tenant lifecycle (create, config, offboard).
+    pub tenants: Arc<TenantStore>,
 }
 
 impl AdaptiveStorage {
@@ -78,7 +88,16 @@ impl AdaptiveStorage {
             }
         };
 
-        Ok(Self { backend })
+        // Open tenant registry from the data directory.
+        let data_dir = config.duckdb.path.parent().unwrap_or(std::path::Path::new("."));
+        let tenant_store = TenantStore::open(data_dir).await.map_err(|e| {
+            KronError::Storage(format!("failed to open tenant registry: {e}"))
+        })?;
+
+        Ok(Self {
+            backend,
+            tenants: Arc::new(tenant_store),
+        })
     }
 }
 

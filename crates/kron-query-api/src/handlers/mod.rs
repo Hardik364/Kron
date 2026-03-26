@@ -10,6 +10,8 @@
 pub mod alerts;
 pub mod assets;
 pub mod auth;
+pub mod compliance;
 pub mod events;
 pub mod health;
 pub mod rules;
+pub mod tenants;
