@@ -141,11 +141,58 @@ jobs:
             target/${{ matrix.target }}/release/${{ matrix.binary }}
             ${{ matrix.binary }}-${{ matrix.target }}.sig
 
+  # ── SBOM generation ───────────────────────────────────────────────────────────
+  # Generates CycloneDX SBOM for the full Rust workspace and attaches it to
+  # the release. Required for supply-chain transparency (SBOM mandate).
+  sbom:
+    name: Generate SBOM
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-cyclonedx
+        run: cargo install cargo-cyclonedx --locked
+
+      - name: Generate CycloneDX SBOM (JSON)
+        run: |
+          cargo cyclonedx --format json --output-file kron-sbom.cdx.json
+          cargo cyclonedx --format xml  --output-file kron-sbom.cdx.xml
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign SBOM
+        run: |
+          cosign sign-blob \
+            --key env://COSIGN_PRIVATE_KEY \
+            --output-signature kron-sbom.cdx.json.sig \
+            kron-sbom.cdx.json
+        env:
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+
+      - name: Upload SBOM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: kron-sbom-${{ github.ref_name }}
+          path: |
+            kron-sbom.cdx.json
+            kron-sbom.cdx.json.sig
+            kron-sbom.cdx.xml
+
   # Create GitHub Release with all signed binaries attached
   create-release:
     name: Create GitHub Release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build-binaries, build-images]
+    needs: [build-binaries, build-images, sbom]
     runs-on: ubuntu-latest
     environment: production
     permissions:
@@ -166,12 +213,45 @@ jobs:
           done
           cat checksums.sha256
 
+      - name: GPG-sign checksums file
+        run: |
+          echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
+          gpg --batch --yes --armor \
+            --local-user "${{ secrets.GPG_KEY_ID }}" \
+            --output artifacts/checksums.sha256.asc \
+            --detach-sign artifacts/checksums.sha256
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
             artifacts/**/*
             artifacts/checksums.sha256
+            artifacts/checksums.sha256.asc
           generate_release_notes: true
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
+          body: |
+            ## Verification
+
+            All binaries are signed with [cosign](https://github.com/sigstore/cosign).
+            The `checksums.sha256` file is additionally GPG-signed.
+
+            ```bash
+            # Verify a binary with cosign
+            cosign verify-blob \
+              --key https://raw.githubusercontent.com/Hardik364/Kron/main/cosign.pub \
+              --signature kron-collector-x86_64-unknown-linux-musl.sig \
+              kron-collector-x86_64-unknown-linux-musl
+
+            # Verify checksums with GPG
+            gpg --verify checksums.sha256.asc checksums.sha256
+
+            # Verify SBOM signature
+            cosign verify-blob \
+              --key https://raw.githubusercontent.com/Hardik364/Kron/main/cosign.pub \
+              --signature kron-sbom.cdx.json.sig \
+              kron-sbom.cdx.json
+            ```
