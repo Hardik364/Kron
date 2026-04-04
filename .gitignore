@@ -1,6 +1,5 @@
-# Rust build artifacts
-target/
-**/target/
+# Build artifacts
+/target/
 
 # Environment files (never commit credentials)
 .env
@@ -11,36 +10,22 @@ target/
 /models/*.onnx
 /models/*.gguf
 
-# Secrets and keys
+# TLS credentials
 *.pem
 *.key
 *.crt
 *.p12
-kron.toml
-!*.default.toml
-!*.example.toml
 
-# IDE / Editor
+# IDE
 .idea/
 .vscode/
 *.iml
-*.swp
-*.swo
 
 # OS
 .DS_Store
 Thumbs.db
-desktop.ini
-
-# Claude session data
-.claude/
-.claude-flow/
 
 # NOTE: Cargo.lock is intentionally NOT listed here.
 # It must be committed — this is a binary project (see CodeStructure.md).
-
-# Flutter build artifacts
-kron-mobile/build/
-kron-mobile/.dart_tool/
-kron-mobile/.flutter-plugins
-kron-mobile/.flutter-plugins-dependencies
+.claude/
+.claude-flow/
