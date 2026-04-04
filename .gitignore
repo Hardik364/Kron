@@ -1,29 +1,34 @@
-# Build artifacts
-/target/
+# Rust build artifacts
+target/
+**/target/
 
-# Environment files (never commit credentials)
-.env
-.env.dev
-*.env
+# Cargo lock for libraries (keep for binaries)
+# Cargo.lock  ← intentionally not ignored for kron-nano/kron-standard
 
-# ONNX and GGUF model files (large binaries, distributed separately)
-/models/*.onnx
-/models/*.gguf
-
-# TLS credentials
+# Secrets and keys
 *.pem
 *.key
-*.crt
 *.p12
-
-# IDE
-.idea/
-.vscode/
-*.iml
+kron.toml
+!*.default.toml
+!*.example.toml
 
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
 
-# NOTE: Cargo.lock is intentionally NOT listed here.
-# It must be committed — this is a binary project (see CodeStructure.md).
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Claude session data
+.claude/
+
+# Flutter build artifacts
+kron-mobile/build/
+kron-mobile/.dart_tool/
+kron-mobile/.flutter-plugins
+kron-mobile/.flutter-plugins-dependencies
